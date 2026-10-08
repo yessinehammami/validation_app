@@ -1,0 +1,26 @@
+name: update-dpm
+
+on:
+  schedule:
+    - cron: "0 21 * * 6"      # Saturday 21:00 UTC = 22:00 in Tunisia (winter time)
+  workflow_dispatch:           # lets you start it by hand to test
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests xlrd pandas truststore
+      - run: python amm_dpm_update.py
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add amm_dpm.db
+          git commit -m "Update DPM list" || echo "No changes"
+          git push
