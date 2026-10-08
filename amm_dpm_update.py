@@ -2,9 +2,7 @@ import io
 import sqlite3
 import requests
 import pandas as pd
-import truststore
 
-truststore.inject_into_ssl()
 URL_XLS = "https://dpm.tn/images/pdf/liste_amm.xls"
 
 COLUMNS = {
@@ -18,7 +16,7 @@ COLUMNS = {
 }
 
 
-content = requests.get(URL_XLS).content
+content = requests.get(URL_XLS, verify=False).content
 df = pd.read_excel(io.BytesIO(content), dtype=str)
 df = df[list(COLUMNS)].rename(columns=COLUMNS)
 
