@@ -17,10 +17,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install requests xlrd pandas truststore
-      - run: python amm_dpm_update.py
+      - run: python cached_data/cached_data_update.py
       - run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
-          git add amm_dpm.db
-          git commit -m "Update DPM list" || echo "No changes"
+          git add cached_data/cached_data.db
+          git commit -m "Update cached data" || echo "No changes"
           git push

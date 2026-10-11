@@ -1,85 +1,61 @@
-import time
+import os
+import sqlite3
 
+import pandas as pd
 import requests
 import streamlit as st
 from streamlit_searchbox import st_searchbox
 
+from common import DB, normalize
+
 BASE = "https://medicaments-api.giygas.dev"
 
 st.title("Données RCP")
-st.caption("Source : API Médicaments FR (BDPM / ANSM)")
-
-
-RATE = 3  # jetons rechargés par seconde
-
-
-@st.cache_resource
-def call_log():
-    return []
+st.caption("Source : API Médicaments FR (BDPM / ANSM) - liste des médicaments : cached_data.db")
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def api_get(path, **params):
     r = requests.get(f"{BASE}{path}", params=params, timeout=30)
-    remaining = r.headers.get("x-ratelimit-remaining")
-    if remaining is not None:
-        log = call_log()
-        now = time.time()
-        remaining = int(remaining)
-        cost = None
-        if log:
-            prev = log[-1]
-            cost = round(prev["restant"] + (now - prev["t"]) * RATE - remaining)
-        log.append({"t": now, "appel": path, "restant": remaining, "coût estimé": cost})
     r.raise_for_status()
     return r.json()
 
 
-def show_quota():
-    log = call_log()
-    with st.sidebar:
-        st.subheader("Quota API")
-        if not log:
-            st.caption("Aucun appel réel effectué (réponses en cache ou pas encore d'appel).")
-            return
-        st.metric("Jetons restants", f"{log[-1]['restant']} / 1000")
-        st.caption("Coût estimé = baisse du quota, recharge (3/s) incluse. Les réponses en cache ne coûtent rien.")
-        st.dataframe(
-            [{k: v for k, v in e.items() if k != "t"} for e in reversed(log[-15:])],
-            hide_index=True,
-        )
+@st.cache_data
+def load_medicaments(file_time):
+    conn = sqlite3.connect(DB)
+    df = pd.read_sql("SELECT DISTINCT code_cis, denomination FROM table_rcp", conn)
+    conn.close()
+    df["_denomination"] = df["denomination"].map(normalize)
+    return df.sort_values("denomination").reset_index(drop=True)
+
+
+medicaments = load_medicaments(os.path.getmtime(DB))
 
 
 def suggest(term):
-    if not term or len(term) < 3:
-        return []
-    try:
-        meds = api_get("/v1/medicaments", search=term)
-    except requests.RequestException:
-        return []
-    return [(m["elementPharmaceutique"], m["cis"]) for m in meds[:20]]
+    matches = medicaments[medicaments["_denomination"].str.startswith(normalize(term))]
+    return list(zip(matches["denomination"], matches["code_cis"]))[:20]
 
 
 cis = st_searchbox(
     suggest,
     key="sb_rcp",
-    placeholder="Tapez un médicament (ex: doliprane 500)",
+    default_options=suggest(""),
+    placeholder="Tapez un médicament (ex: doliprane)",
 )
 
 if not cis:
-    show_quota()
-    st.info("Tapez au moins 3 caractères, puis choisissez un médicament.")
+    st.info("Commencez à taper, puis choisissez un médicament.")
     st.stop()
 
 try:
     med = api_get(f"/v1/medicaments/{cis}")
     rcp = api_get(f"/v1/medicaments/{cis}/rcp")
 except requests.RequestException as e:
-    show_quota()
     st.error(f"Erreur lors de l'appel à l'API : {e}")
     st.stop()
 
-show_quota()
 st.subheader(med["elementPharmaceutique"])
 col1, col2, col3 = st.columns(3)
 col1.write(f"**Forme :** {med.get('formePharmaceutique') or '-'}")
@@ -96,7 +72,7 @@ st.write("**Substances actives :** " + (", ".join(substances) or "-"))
 st.divider()
 st.caption(f"RCP mis à jour le {rcp.get('miseAJour', '-')} - {rcp.get('source', '')}")
 for section in rcp.get("sections", []):
-    with st.expander(section["titre"], expanded=section["id"] == "4.1"):
+    with st.expander(section["titre"]):
         st.html(section["contenu"])
 
 with st.expander("Réponse JSON brute (test)"):

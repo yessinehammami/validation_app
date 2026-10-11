@@ -1,11 +1,12 @@
 import os
 import sqlite3
 import unicodedata
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-DB = "amm_dpm.db"
+DB = Path(__file__).parent / "cached_data" / "cached_data.db"
 
 
 def normalize(text):
