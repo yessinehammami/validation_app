@@ -6,7 +6,7 @@ import requests
 import streamlit as st
 from streamlit_searchbox import st_searchbox
 
-from common import DB, normalize
+from common import DB, load_rcp, normalize, specialites_pour_dci
 
 BASE = "https://medicaments-api.giygas.dev"
 
@@ -45,8 +45,50 @@ cis = st_searchbox(
     placeholder="Tapez un médicament (ex: doliprane)",
 )
 
+rcp_df = load_rcp()
+substances_liste = sorted(rcp_df["substance"].dropna().unique())
+_substances = [normalize(s) for s in substances_liste]
+
+
+def suggest_substance(term):
+    t = normalize(term)
+    return [s for s, n in zip(substances_liste, _substances) if t in n][:20]
+
+
+substance = st_searchbox(
+    suggest_substance,
+    key="sb_substance",
+    default_options=suggest_substance(""),
+    placeholder="Ou filtrez par substance (ex: amoxicilline)",
+)
+
+dci = st.session_state.get("rcp_dci")
+if dci or substance:
+    if substance:
+        specs = rcp_df[rcp_df["substance"] == substance][["code_cis", "denomination"]]
+        specs = specs.drop_duplicates().sort_values("denomination").reset_index(drop=True)
+        titre = substance
+    else:
+        specs = specialites_pour_dci(rcp_df, dci)
+        titre = dci
+    st.divider()
+    st.subheader(f"Spécialités contenant : {titre}")
+    if dci and not substance and st.button("✖ Retirer le filtre DCI"):
+        del st.session_state["rcp_dci"]
+        st.rerun()
+    st.write(f"{len(specs)} spécialité(s)")
+    event = st.dataframe(
+        specs[["denomination"]],
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+    )
+    if event.selection.rows:
+        cis = specs.iloc[event.selection.rows[0]]["code_cis"]
+    st.divider()
+
 if not cis:
-    st.info("Commencez à taper, puis choisissez un médicament.")
+    st.info("Choisissez un médicament dans la liste ou dans la recherche.")
     st.stop()
 
 try:

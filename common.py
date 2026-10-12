@@ -50,6 +50,34 @@ def suggestions(df, norm_col, label_col, term, limit=20):
     return matches[label_col].dropna().drop_duplicates().sort_values().head(limit).tolist()
 
 
+@st.cache_data
+def _load_rcp(file_time):
+    conn = sqlite3.connect(DB)
+    df = pd.read_sql("SELECT code_cis, denomination, substance FROM table_rcp", conn)
+    conn.close()
+    df["_substance"] = df["substance"].fillna("").map(normalize)
+    return df
+
+
+def load_rcp():
+    return _load_rcp(os.path.getmtime(DB))
+
+
+def specialites_pour_dci(rcp, dci):
+    """spécialités dont les substances contiennent au moins une partie de la DCI ('A+B' = A ou B)"""
+    parts = [normalize(p).strip() for p in str(dci).split("+")]
+    cis = set()
+    for part in filter(None, parts):
+        # une partie très courte (FER, FSH) doit être égale à la substance, pas seulement contenue
+        if len(part) < 4:
+            mask = rcp["_substance"] == part
+        else:
+            mask = rcp["_substance"].str.contains(part, regex=False)
+        cis |= set(rcp.loc[mask, "code_cis"])
+    result = rcp[rcp["code_cis"].isin(cis)][["code_cis", "denomination"]]
+    return result.drop_duplicates().sort_values("denomination").reset_index(drop=True)
+
+
 def show_results(view):
     view = view.reset_index(drop=True)
     st.write(f"{len(view)} résultat(s)")
