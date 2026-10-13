@@ -34,27 +34,34 @@ st_searchbox(
 st.divider()
 
 
+def valeurs_de(label, colonne):
+    vals = sorted(df.loc[df["label"] == label, colonne].dropna().astype(str).str.strip().unique())
+    vals = [v for v in vals if v]
+    return " + ".join(vals) if vals else "-"
+
+
 def dci_de(label):
-    dcis = sorted(df.loc[df["label"] == label, "dci"].dropna().unique())
-    return " + ".join(dcis) if dcis else "-"
+    return valeurs_de(label, "dci")
 
 
 if st.session_state.ordonnance:
     st.subheader("📋 Ordonnance actuelle")
     rcp = load_rcp()
-    entete = st.columns([4, 4, 3, 1])
-    entete[0].markdown("**Spécialité**")
-    entete[1].markdown("**DCI**")
-    entete[2].markdown("**Spécialités RCP**")
+    poids = [3, 3, 2, 2, 2, 1]
+    entete = st.columns(poids)
+    for col, titre in zip(entete, ["Spécialité", "DCI", "Classe", "Sous-classe", "Spécialités RCP"]):
+        col.markdown(f"**{titre}**")
     for idx, label in enumerate(st.session_state.ordonnance):
-        c1, c2, c3, c4 = st.columns([4, 4, 3, 1], vertical_alignment="center")
+        c1, c2, c3, c4, c5, c6 = st.columns(poids, vertical_alignment="center")
         c1.write(label)
         c2.write(dci_de(label))
+        c3.write(valeurs_de(label, "classe"))
+        c4.write(valeurs_de(label, "sous_classe"))
         for d in sorted(df.loc[df["label"] == label, "dci"].dropna().unique()):
             n = len(specialites_pour_dci(rcp, d))
-            if n and c3.button(f"{n} spécialité(s) →", key=f"rcp_{idx}_{d}"):
+            if n and c5.button(f"{n} spécialité(s) →", key=f"rcp_{idx}_{d}"):
                 st.session_state.rcp_dci = d
                 st.switch_page("donnees_rcp.py")
-        if c4.button("❌", key=f"remove_{idx}"):
+        if c6.button("❌", key=f"remove_{idx}"):
             st.session_state.ordonnance.pop(idx)
             st.rerun()

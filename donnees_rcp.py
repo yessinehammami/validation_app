@@ -77,14 +77,28 @@ if dci or substance:
         del st.session_state["rcp_dci"]
         st.rerun()
     st.write(f"{len(specs)} spécialité(s)")
-    event = st.dataframe(
-        specs[["denomination"]],
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
+    # toutes les substances de chaque spécialité, puis regroupement par combinaison identique
+    subs = (
+        rcp_df[rcp_df["code_cis"].isin(specs["code_cis"])]
+        .groupby("code_cis")["substance"]
+        .agg(lambda s: " + ".join(sorted(set(s.dropna()))) or "-")
     )
-    if event.selection.rows:
-        cis = specs.iloc[event.selection.rows[0]]["code_cis"]
+    specs = specs.assign(substances=specs["code_cis"].map(subs).fillna("-"))
+    groupes = list(specs.groupby("substances", sort=True))
+    groupes.sort(key=lambda g: -len(g[1]))
+    st.write(f"{len(groupes)} groupe(s) de substances")
+    for i, (combinaison, groupe) in enumerate(groupes):
+        groupe = groupe.reset_index(drop=True)
+        with st.expander(f"{combinaison} — {len(groupe)} spécialité(s)"):
+            event = st.dataframe(
+                groupe[["denomination"]],
+                hide_index=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                key=f"grp_{i}",
+            )
+            if event.selection.rows:
+                cis = groupe.iloc[event.selection.rows[0]]["code_cis"]
     st.divider()
 
 if not cis:
