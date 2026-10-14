@@ -46,47 +46,47 @@ cis = st_searchbox(
 )
 
 rcp_df = load_rcp()
-substances_liste = sorted(rcp_df["substance"].dropna().unique())
-_substances = [normalize(s) for s in substances_liste]
+dci_liste = sorted(rcp_df["dci"].dropna().unique())
+_dcis = [normalize(s) for s in dci_liste]
 
 
-def suggest_substance(term):
+def suggest_dci(term):
     t = normalize(term)
-    return [s for s, n in zip(substances_liste, _substances) if t in n][:20]
+    return [s for s, n in zip(dci_liste, _dcis) if t in n][:20]
 
 
-substance = st_searchbox(
-    suggest_substance,
-    key="sb_substance",
-    default_options=suggest_substance(""),
-    placeholder="Ou filtrez par substance (ex: amoxicilline)",
+dci_choisie = st_searchbox(
+    suggest_dci,
+    key="sb_dci",
+    default_options=suggest_dci(""),
+    placeholder="Ou filtrez par DCI (ex: amoxicilline)",
 )
 
 dci = st.session_state.get("rcp_dci")
-if dci or substance:
-    if substance:
-        specs = rcp_df[rcp_df["substance"] == substance][["code_cis", "denomination"]]
+if dci or dci_choisie:
+    if dci_choisie:
+        specs = rcp_df[rcp_df["dci"] == dci_choisie][["code_cis", "denomination"]]
         specs = specs.drop_duplicates().sort_values("denomination").reset_index(drop=True)
-        titre = substance
+        titre = dci_choisie
     else:
         specs = specialites_pour_dci(rcp_df, dci)
         titre = dci
     st.divider()
     st.subheader(f"Spécialités contenant : {titre}")
-    if dci and not substance and st.button("✖ Retirer le filtre DCI"):
+    if dci and not dci_choisie and st.button("✖ Retirer le filtre DCI"):
         del st.session_state["rcp_dci"]
         st.rerun()
     st.write(f"{len(specs)} spécialité(s)")
-    # toutes les substances de chaque spécialité, puis regroupement par combinaison identique
+    # toutes les DCI de chaque spécialité, puis regroupement par combinaison identique
     subs = (
         rcp_df[rcp_df["code_cis"].isin(specs["code_cis"])]
-        .groupby("code_cis")["substance"]
+        .groupby("code_cis")["dci"]
         .agg(lambda s: " + ".join(sorted(set(s.dropna()))) or "-")
     )
     specs = specs.assign(substances=specs["code_cis"].map(subs).fillna("-"))
     groupes = list(specs.groupby("substances", sort=True))
     groupes.sort(key=lambda g: -len(g[1]))
-    st.write(f"{len(groupes)} groupe(s) de substances")
+    st.write(f"{len(groupes)} groupe(s) de DCI")
     for i, (combinaison, groupe) in enumerate(groupes):
         groupe = groupe.reset_index(drop=True)
         with st.expander(f"{combinaison} — {len(groupe)} spécialité(s)"):

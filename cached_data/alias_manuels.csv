@@ -1,0 +1,95 @@
+dci_bdpm,inn_en,commentaire
+chlorure de sodium,sodium chloride,sel en prefixe FR -> nom ATC
+sodium (chlorure de),sodium chloride,ordre inverse
+bicarbonate de sodium,sodium bicarbonate,
+chlorure de potassium,potassium chloride,
+potassium (chlorure de),potassium chloride,ordre inverse
+chlorure de calcium dihydrate,calcium chloride,
+calcium (chlorure de) dihydrate,calcium chloride,ordre inverse
+chlorure de magnesium hexahydrate,magnesium chloride,
+cholecalciferol,colecalciferol,orthographe INN
+levothyroxine sodique anhydre,levothyroxine sodium,
+levothyroxine,levothyroxine sodium,
+tryptophane l,tryptophan,
+adrenaline,epinephrine,nom FR different du nom ATC
+iode,iodine,
+fumarate de dimethyle,dimethyl fumarate,
+digluconate de chlorhexidine,chlorhexidine,
+solution de digluconate de chlorhexidine,chlorhexidine,
+gluconate de chlorhexidine,chlorhexidine,
+chlorhydrate de pyridoxine,pyridoxine (vit b6),libelle ATC avec (vit b6)
+povidone iodee,povidone-iodine,
+bromure d'ipratropium anhydre,ipratropium bromide,
+acide folinique,calcium folinate,ATC code le sel de calcium
+ciclopirox olamine,ciclopirox,
+trinitrine,glyceryl trinitrate,
+hydroxyde de magnesium,magnesium hydroxide,
+acetate de sodium trihydrate,sodium acetate,
+macrogol 4000,macrogol,
+macrogol 3350,macrogol,
+cafeine,caffeine,
+manidipine (dichlorhydrate de),manidipine,
+valproate de sodium,valproic acid,
+cromoglicate de sodium,cromoglicic acid,
+fluorure de sodium,sodium fluoride,
+mycophenolate mofetil,mycophenolic acid,
+montelukast acide,montelukast,
+protoxyde d'azote,nitrous oxide,
+charbon active,medicinal charcoal,
+hydrogenosuccinate de doxylamine,doxylamine,
+acetate de zinc dihydrate,zinc acetate,
+gluconate de calcium,calcium gluconate,
+facteur viii de coagulation humain,coagulation factor viii,
+sulfate de sodium anhydre,sodium sulfate,
+risedronate monosodique anhydre,risedronic acid,
+iodure de potassium,potassium iodide,
+acide ursodesoxycholique,ursodeoxycholic acid,
+"alcool dichloro-2,4 benzylique",dichlorobenzyl alcohol,
+toxine botulinique type a,botulinum toxin,
+alginate de sodium,alginic acid,
+albumine humaine,albumin,
+paraffine liquide,liquid paraffin,
+lévothyroxine sodique,levothyroxine sodium,
+caféine anhydre,caffeine,
+immunoglobuline humaine normale (plasmatique),"immunoglobulins, normal human, for extravascular adm.",
+méthoxy polyéthylène glycol-époétine bêta,methoxy polyethylene glycol-epoetin beta,
+acide clavulanique,sans_atc,pas de code seul dans l'ATC (uniquement associations)
+clavulanique (acide),sans_atc,pas de code seul dans l'ATC (uniquement associations)
+carbidopa anhydre,sans_atc,absent de l'ATC seul (voir levodopa et inhibiteur de decarboxylase)
+gestodène,sans_atc,absent de l'ATC seul (uniquement associations)
+imipénem anhydre,sans_atc,absent de l'ATC seul (uniquement association cilastatine)
+époétine alfa,sans_atc,absent de la table atc
+époétine bêta,sans_atc,absent de la table atc
+époétine zêta,sans_atc,absent de la table atc
+octocog alfa,sans_atc,absent de la table atc
+histidine,sans_atc,acide amine nutriment
+valine,sans_atc,acide amine nutriment
+alanine,sans_atc,acide amine nutriment
+thréonine,sans_atc,acide amine nutriment
+arginine,sans_atc,acide amine nutriment
+leucine,sans_atc,acide amine nutriment
+phénylalanine,sans_atc,acide amine nutriment
+isoleucine,sans_atc,acide amine nutriment
+sérine,sans_atc,acide amine nutriment
+proline,sans_atc,acide amine nutriment
+tyrosine,sans_atc,acide amine nutriment
+cystéine,sans_atc,acide amine nutriment
+taurine,sans_atc,acide amine nutriment
+acide glutamique,sans_atc,acide amine nutriment
+acide aspartique,sans_atc,acide amine nutriment
+calcium élément,sans_atc,element mineral
+fer,sans_atc,element mineral
+magnésium,sans_atc,element mineral
+cuivre,sans_atc,element mineral
+zinc,sans_atc,element mineral
+manganèse,sans_atc,element mineral
+huile de soja raffinée,sans_atc,excipient / nutrition
+huile d'olive raffinée,sans_atc,excipient / nutrition
+triglycérides à chaîne moyenne,sans_atc,excipient / nutrition
+vaseline,sans_atc,excipient
+borax,sans_atc,excipient
+amylmétacrésol,sans_atc,absent de la table atc
+oxyde de zinc,sans_atc,absent de la table atc
+lévomenthol,sans_atc,absent de la table atc
+eau pour préparations injectables,sans_atc,excipient
+palmier de floride (serenoa repens (w.bartram) small.) (extrait du fruit de),sans_atc,phytotherapie absent de la table atc

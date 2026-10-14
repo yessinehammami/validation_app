@@ -1,0 +1,8 @@
+*Indications hors AMM 
+*Interractions
+*Analyse ordonnance : alerte pour médicaments en cas de fonction rénale altérée
+(médicaments à élimination rénale / adaptation pos / substitution)
+ATC Classification
+
+DCI TO INN : https://www.wcoomd.org/fr/topics/nomenclature/instrument-and-tools/tools-to-assist-with-the-classification-in-the-hs/hs_classification-decisions/inn-table.aspx
+ATC : https://bioportal.bioontology.org/ontologies/ATC

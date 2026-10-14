@@ -53,9 +53,9 @@ def suggestions(df, norm_col, label_col, term, limit=20):
 @st.cache_data
 def _load_rcp(file_time):
     conn = sqlite3.connect(DB)
-    df = pd.read_sql("SELECT code_cis, denomination, substance FROM table_rcp", conn)
+    df = pd.read_sql("SELECT code_cis, denomination, substance, dci FROM table_rcp", conn)
     conn.close()
-    df["_substance"] = df["substance"].fillna("").map(normalize)
+    df["_dci"] = df["dci"].fillna("").map(normalize)
     return df
 
 
@@ -64,15 +64,15 @@ def load_rcp():
 
 
 def specialites_pour_dci(rcp, dci):
-    """spécialités dont les substances contiennent au moins une partie de la DCI ('A+B' = A ou B)"""
+    """spécialités dont la DCI (FT de table_rcp) contient au moins une partie de la DCI DPM ('A+B' = A ou B)"""
     parts = [normalize(p).strip() for p in str(dci).split("+")]
     cis = set()
     for part in filter(None, parts):
         # une partie très courte (FER, FSH) doit être égale à la substance, pas seulement contenue
         if len(part) < 4:
-            mask = rcp["_substance"] == part
+            mask = rcp["_dci"] == part
         else:
-            mask = rcp["_substance"].str.contains(part, regex=False)
+            mask = rcp["_dci"].str.contains(part, regex=False)
         cis |= set(rcp.loc[mask, "code_cis"])
     result = rcp[rcp["code_cis"].isin(cis)][["code_cis", "denomination"]]
     return result.drop_duplicates().sort_values("denomination").reset_index(drop=True)

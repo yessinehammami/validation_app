@@ -1,8 +1,8 @@
-name: update-dpm
+name: update-data
 
 on:
   schedule:
-    - cron: "0 21 * * 6"      # Saturday 21:00 UTC = 22:00 in Tunisia (winter time)
+    - cron: "0 21 1 * *"      # 1st of each month, 21:00 UTC = 22:00 in Tunisia (winter time)
   workflow_dispatch:           # lets you start it by hand to test
 
 permissions:
@@ -16,8 +16,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests xlrd pandas truststore
-      - run: python cached_data/cached_data_update.py
+      - run: pip install requests xlrd openpyxl pandas truststore
+      - run: python cached_data/update_dpm.py
+      - run: python cached_data/update_compo.py
+      - run: python cached_data/update_bdpm.py
+      - run: python cached_data/update_dci_inn.py
+      - run: python cached_data/update_atc.py
+      - run: python cached_data/update_dci_atc.py
       - run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"
