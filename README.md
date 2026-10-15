@@ -1,0 +1,180 @@
+# Validation ordonnances
+
+Application Streamlit qui :
+
+1. convertit des spécialités du DPM (Tunisie) en DCI ;
+2. affiche les données RCP françaises (API Médicaments FR / BDPM) ;
+3. **analyse les interactions médicamenteuses d'une ordonnance** à partir du Thésaurus des interactions de l'ANSM.
+
+Ce document explique, depuis les données brutes, comment on arrive à l'analyse d'interactions.
+
+---
+
+## 1. Vue d'ensemble
+
+```
+DPM (Tunisie) ──► dpm_produit_raw ─────────────┐
+                                               │ DCI (texte libre "A+B")
+BDPM (France) ──► table_rcp (CIS, substance, DCI) ──► dci_atc (DCI → codes ATC)
+                                                              │
+ATC (BioPortal) + inn_dci (FR→EN) ──► build.db ───────────────┘
+                                                              │
+Thésaurus ANSM (PDF) ──► thesaurus_interactions ──► thesaurus_atc (nom → préfixes ATC)
+                                  ▲                        ▲
+                                  │                        └── classes_atc.csv (classes → préfixes, manuel)
+                                  └── extraction du PDF (extract_thesaurus.py, une seule fois)
+```
+
+**Idée centrale : le code ATC est le pont.** Le DPM, le RCP et le thésaurus n'utilisent pas les mêmes noms
+(DCI tunisienne, substance française avec sel, classe thérapeutique…). On donne donc un code ATC à chaque
+médicament de l'ordonnance, et des préfixes ATC à chaque entrée du thésaurus (substance ou classe).
+Un médicament est concerné par une entrée du thésaurus si son code ATC commence par le préfixe de cette entrée.
+
+---
+
+## 2. Les sources de données
+
+| Source | Contenu | Script | Table / fichier |
+|---|---|---|---|
+| DPM (Direction de la Pharmacie et du Médicament, Tunisie) | Spécialités tunisiennes, DCI, classe, sous-classe | `update_dpm.py` | `dpm_produit_raw` |
+| BDPM (base publique des médicaments, France) | Spécialités, compositions (`CIS_COMPO_bdpm.txt`), RCP | `update_bdpm.py` | `table_rcp` |
+| ATC (BioPortal) | Classification ATC (niveau 5 = substance) | `update_atc.py` | `atc` (dans `build.db`) |
+| INN/DCI | Correspondance noms français ↔ anglais | `update_dci_inn.py` | `inn_dci` (dans `build.db`) |
+| Thésaurus ANSM (sept. 2023, PDF) | Interactions médicamenteuses | `extract_thesaurus.py` (une fois) | `thesaurus_interactions.csv` |
+
+Le thésaurus 2023 est la dernière version publiée ; il n'est plus mis à jour. Son extraction est donc figée.
+
+### Deux bases SQLite
+
+- `cached_data/cached_data.db` : base **de l'application** (versionnée, lue par Streamlit) ;
+- `cached_data/build.db` : base **de construction** (tables intermédiaires `atc`, `inn_dci`), non versionnée, régénérée par les scripts.
+
+Tables de `cached_data.db` : `dpm_produit_raw`, `table_rcp`, `dci_atc`, `thesaurus_interactions`, `thesaurus_atc`, `maj_tables` (date de dernière mise à jour de chaque table).
+
+---
+
+## 3. Étapes de construction
+
+### Étape 1 – DPM → `dpm_produit_raw`
+Téléchargement de la liste des spécialités tunisiennes. La colonne `dci` est un texte libre
+(association : `A+B`).
+
+### Étape 2 – BDPM → `table_rcp`
+`update_bdpm.py` télécharge les fichiers BDPM et la composition (`CIS_COMPO_bdpm.txt`, traitée en mémoire).
+Chaque ligne : code CIS, dénomination, substance (avec sel), **DCI** (substance sans sel), code substance.
+
+### Étape 3 – ATC et traduction des noms
+- `update_atc.py` charge la classification ATC (on ne garde que les codes de niveau 5, ex. `B01AA03` warfarine).
+- `update_dci_inn.py` charge la table de traduction français → anglais (ex. *paracétamol* → *paracetamol*),
+  car l'ATC est en anglais.
+
+### Étape 4 – DCI → ATC : `dci_atc`
+`update_dci_atc.py` associe chaque DCI de `table_rcp` à un ou plusieurs codes ATC (plusieurs selon la voie
+d'administration). Cascade, du plus sûr au moins sûr ; la première correspondance trouvée gagne :
+
+1. règle spéciale : homéopathie / virus → pas d'ATC ;
+2. alias manuel (`alias_manuels.csv`) ;
+3. nom exact ;
+4. traduction FR → EN (`inn_dci`) ;
+5. nom sans le sel (chlorhydrate, sodique…) ;
+6. variantes (sans « e » final, acide…).
+
+`alias_manuels.csv` permet de forcer un rattachement (`DCI → nom ATC`) ou de déclarer qu'une DCI n'a
+pas d'ATC (`sans_atc`: acides aminés, minéraux, excipients, substances absentes de l'ATC…).
+
+### Étape 5 – Extraction du thésaurus (une seule fois)
+`extract_thesaurus.py` (nécessite `pymupdf`, non listé dans `requirements.txt`) lit le PDF en s'appuyant
+sur la taille de police et la position des textes :
+
+- substance ou classe **A** : grande police, à gauche ;
+- lignes `+ B` : le médicament ou la classe en interaction avec A ;
+- niveau et conduite à tenir : colonne de droite ; mécanisme : texte en dessous.
+
+Résultat : `thesaurus_interactions.csv`, **3216 interactions** (616 A distincts, 630 B), conforme au nombre
+de lignes `+ B` du PDF. Niveaux :
+
+| Code | Signification |
+|---|---|
+| CI | Contre-indication |
+| ASDEC | Association déconseillée |
+| PE | Précaution d'emploi |
+| APEC | À prendre en compte |
+
+Quand plusieurs niveaux sont cités, `niveaux` les contient tous (séparés par `|`) et `niveau_max` donne le
+plus sévère. Le fichier CSV est versionné : il n'y a pas besoin de refaire l'extraction.
+
+### Étape 6 – Thésaurus → ATC : `thesaurus_atc`
+`update_thesaurus.py` charge le CSV dans `thesaurus_interactions` et construit `thesaurus_atc`
+(`nom_thesaurus`, `prefixe_atc`, `origine`) :
+
+- **Substances** : le nom est nettoyé (suppression de « (et, par extrapolation, …) », inversion de
+  « X (acide) », séparation de « A + B », retrait des parenthèses), puis rapproché des DCI de `table_rcp`,
+  et on reprend leurs codes ATC (via `dci_atc`) ;
+- **Classes** (ex. « ANTICOAGULANTS ORAUX », « ANTI-INFLAMMATOIRES NON STÉROÏDIENS ») : l'ATC ne contient
+  pas la liste des membres d'une classe du thésaurus ; elle est donc définie à la main dans
+  `classes_atc.csv` (`nom_thesaurus`, `prefixes_atc` séparés par `|`, `commentaire`). Ex. AINS → `M01A`.
+
+Couverture actuelle : 445 des 644 noms du thésaurus ont au moins un préfixe ATC ; 61 % des interactions
+ont leurs deux côtés couverts.
+
+---
+
+## 4. L'analyse d'interactions dans l'application
+
+Page « Liste AMMs en Tunisie » → bouton **🔍 Détecter une interaction** (actif à partir de 2 médicaments).
+Code : `analyser_ordonnance()` dans `common.py`.
+
+1. **Médicament → DCI** : la colonne `dci` du DPM (découpée sur `+`).
+2. **DCI → substances RCP** : correspondance avec `table_rcp.dci` (égalité si le nom fait moins de 4 caractères,
+   sinon « contient »), après normalisation (minuscules, sans accents).
+3. **Substances → codes ATC** via `dci_atc`.
+4. **Codes ATC → entrées du thésaurus** : une entrée est retenue si un des codes du médicament commence
+   par un de ses préfixes dans `thesaurus_atc`.
+5. **Pour chaque paire de médicaments** : on cherche dans `thesaurus_interactions` les lignes `(a, b)` dans
+   les deux sens (30 paires n'ont qu'une direction dans le PDF).
+6. **Affichage** : triées par gravité (CI > ASDEC > PE > APEC), avec les médicaments concernés, les noms du
+   thésaurus, la conduite à tenir et le mécanisme. Les médicaments sans ATC sont listés « non analysés ».
+
+Exemple : Sintrom (acénocoumarol, `B01AA07`) + Adofen (ibuprofène, `M01AE01`) → entrée « ANTICOAGULANTS ORAUX »
+(préfixe `B01A`) et « ANTI-INFLAMMATOIRES NON STÉROÏDIENS » (`M01A`) → **association déconseillée**.
+
+---
+
+## 5. Limites connues
+
+L'analyse est **indicative** et ne remplace ni un pharmacien ni la lecture du RCP.
+
+- Classes non couvertes : celles sans équivalent ATC (inhibiteurs/inducteurs du CYP3A4, substances donnant
+  des torsades de pointes, millepertuis, pamplemousse, alcool, fer, zinc, vaccins vivants atténués…).
+- Certaines classes de `classes_atc.csv` sont approximatives et ignorent les exclusions du thésaurus
+  (« sauf hydrocortisone », etc.) : faux positifs possibles. **Une relecture par un pharmacien est nécessaire.**
+- La voie d'administration et les doses ne sont pas prises en compte (le thésaurus exclut en général les
+  voies locales, sauf exceptions).
+- L'ATC de BioPortal est incomplet ; des DCI restent sans code (listées comme « non analysés »).
+- Seules les interactions du thésaurus sont exploitées (pas la rubrique 4.5 des RCP).
+
+---
+
+## 6. Mise à jour des données
+
+Le workflow GitHub `.github/workflows/update_data.yml` s'exécute chaque mois et lance, dans l'ordre :
+
+```
+update_dpm → update_bdpm → update_dci_inn → update_atc → update_dci_atc → update_thesaurus
+```
+
+`update_thesaurus.py` est relancé car `thesaurus_atc` dépend de `dci_atc`, qui change avec les données.
+En local, lancer les scripts depuis le dossier `cached_data` (ils importent `maj_tables`) ; `update_dci_atc.py`
+et `update_thesaurus.py` ont besoin de `build.db` (généré par `update_atc.py` et `update_dci_inn.py`).
+
+## 7. Lancer l'application
+
+```
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+Fichiers principaux : `app.py` (navigation et login), `conversion_dci.py` (page 1 + analyse),
+`donnees_rcp.py` (page RCP), `common.py` (chargement des données et logique d'analyse).

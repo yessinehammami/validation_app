@@ -53,7 +53,7 @@ def suggestions(df, norm_col, label_col, term, limit=20):
 @st.cache_data
 def _load_rcp(file_time):
     conn = sqlite3.connect(DB)
-    df = pd.read_sql("SELECT code_cis, denomination, substance, dci FROM table_rcp", conn)
+    df = pd.read_sql("SELECT code_cis, denomination, forme, substance, dci FROM table_rcp", conn)
     conn.close()
     df["_dci"] = df["dci"].fillna("").map(normalize)
     return df
@@ -64,18 +64,100 @@ def load_rcp():
 
 
 def specialites_pour_dci(rcp, dci):
-    """spécialités dont la DCI (FT de table_rcp) contient au moins une partie de la DCI DPM ('A+B' = A ou B)"""
-    parts = [normalize(p).strip() for p in str(dci).split("+")]
-    cis = set()
-    for part in filter(None, parts):
+    """spécialités dont la composition correspond exactement à la DCI DPM ('A+B' = A et B, rien d'autre)"""
+    parts = [p for p in (normalize(p).strip() for p in str(dci).split("+")) if p]
+    cis = None
+    hors_dci = pd.Series(True, index=rcp.index)
+    for part in parts:
         # une partie très courte (FER, FSH) doit être égale à la substance, pas seulement contenue
         if len(part) < 4:
             mask = rcp["_dci"] == part
         else:
             mask = rcp["_dci"].str.contains(part, regex=False)
-        cis |= set(rcp.loc[mask, "code_cis"])
-    result = rcp[rcp["code_cis"].isin(cis)][["code_cis", "denomination"]]
+        hors_dci &= ~mask
+        found = set(rcp.loc[mask, "code_cis"])
+        cis = found if cis is None else cis & found
+    # exclut les spécialités ayant une substance étrangère à la DCI (ex. amoxicilline seule ≠ + acide clavulanique)
+    en_trop = set(rcp.loc[hors_dci & (rcp["_dci"] != ""), "code_cis"])
+    cis = (cis or set()) - en_trop
+    result = rcp[rcp["code_cis"].isin(cis)][["code_cis", "denomination", "forme"]]
     return result.drop_duplicates().sort_values("denomination").reset_index(drop=True)
+
+
+@st.cache_data
+def _load_interactions(file_time):
+    conn = sqlite3.connect(DB)
+    tables = {
+        name: pd.read_sql(f"SELECT * FROM {name}", conn)
+        for name in ("dci_atc", "thesaurus_atc", "thesaurus_interactions")
+    }
+    conn.close()
+    return tables
+
+
+def load_interactions():
+    return _load_interactions(os.path.getmtime(DB))
+
+
+def codes_atc_pour_dci(rcp, dci_atc, dci):
+    """codes ATC des substances RCP correspondant à une DCI DPM ('A+B' = A et B)"""
+    parts = [normalize(p).strip() for p in str(dci).split("+")]
+    noms = set()
+    for part in filter(None, parts):
+        if len(part) < 4:
+            mask = rcp["_dci"] == part
+        else:
+            mask = rcp["_dci"].str.contains(part, regex=False)
+        noms |= set(rcp.loc[mask, "dci"].dropna())
+    return set(dci_atc.loc[dci_atc["dci"].isin(noms), "code_atc"])
+
+
+def noms_thesaurus(codes, thesaurus_atc):
+    """entrées du thésaurus (substances ou classes) dont le préfixe ATC couvre un des codes"""
+    prefixes = thesaurus_atc["prefixe_atc"].tolist()
+    ok = [any(c.startswith(p) for c in codes) for p in prefixes]
+    return set(thesaurus_atc.loc[ok, "nom_thesaurus"])
+
+
+GRAVITE = {"CI": 0, "ASDEC": 1, "PE": 2, "APEC": 3}
+NIVEAU_LIBELLE = {
+    "CI": "Contre-indication",
+    "ASDEC": "Association déconseillée",
+    "PE": "Précaution d'emploi",
+    "APEC": "À prendre en compte",
+}
+
+
+def analyser_ordonnance(rcp, medicaments):
+    """medicaments : {libellé: [DCI DPM]}. Renvoie (interactions, libellés sans code ATC)."""
+    tables = load_interactions()
+    dci_atc, tha, thi = tables["dci_atc"], tables["thesaurus_atc"], tables["thesaurus_interactions"]
+
+    noms = {}
+    sans_atc = []
+    for label, dcis in medicaments.items():
+        codes = set().union(*[codes_atc_pour_dci(rcp, dci_atc, d) for d in dcis]) if dcis else set()
+        noms[label] = noms_thesaurus(codes, tha)
+        if not codes:
+            sans_atc.append(label)
+
+    resultats, vus = [], set()
+    labels = list(medicaments)
+    for i, m1 in enumerate(labels):
+        for m2 in labels[i + 1:]:
+            mask = (thi["a"].isin(noms[m1]) & thi["b"].isin(noms[m2])) | (
+                thi["a"].isin(noms[m2]) & thi["b"].isin(noms[m1])
+            )
+            for row in thi[mask].itertuples():
+                cle = (frozenset((m1, m2)), frozenset((row.a, row.b)), row.niveaux, row.mecanisme)
+                if cle in vus:
+                    continue
+                vus.add(cle)
+                resultats.append({"m1": m1, "m2": m2, "a": row.a, "b": row.b,
+                                  "niveau": row.niveau_max, "niveaux": row.niveaux,
+                                  "conduite": row.conduite_a_tenir, "mecanisme": row.mecanisme})
+    resultats.sort(key=lambda r: GRAVITE.get(r["niveau"], 9))
+    return resultats, sans_atc
 
 
 def show_results(view):

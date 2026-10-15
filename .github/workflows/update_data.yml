@@ -18,11 +18,11 @@ jobs:
           python-version: "3.12"
       - run: pip install requests xlrd openpyxl pandas truststore
       - run: python cached_data/update_dpm.py
-      - run: python cached_data/update_compo.py
       - run: python cached_data/update_bdpm.py
       - run: python cached_data/update_dci_inn.py
       - run: python cached_data/update_atc.py
       - run: python cached_data/update_dci_atc.py
+      - run: python cached_data/update_thesaurus.py
       - run: |
           git config user.name "github-actions"
           git config user.email "github-actions@users.noreply.github.com"

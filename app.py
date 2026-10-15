@@ -38,8 +38,8 @@ except LoginError:
     st.stop()
 
 pages = [
-    st.Page("conversion_dci.py", title="Conversion rapide en DCI", default=True),
-    st.Page("donnees_rcp.py", title="Données RCP"),
+    st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", default=True),
+    st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)"),
 ]
 connecte = bool(st.session_state.get("authentication_status"))
 # navigation masquée tant que non connecté, sinon l'ancien menu reste affiché

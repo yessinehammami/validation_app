@@ -1,18 +1,33 @@
-"""API Médicaments FR + compo_bdpm -> table table_rcp (one row per CIS and active substance).
+"""API Médicaments FR + BDPM CIS_COMPO -> table table_rcp (one row per CIS and active substance).
 
-Must run after update_compo.py (reads the compo_bdpm table).
+The BDPM composition file (SA = active substance, FT = therapeutic fraction, joined by
+link number) is processed in memory.
 """
+import io
 import sqlite3
-from pathlib import Path
 
 import requests
 import pandas as pd
 
-from maj_tables import log_update
+from maj_tables import DB_APP as DB, log_update
 
-DB = Path(__file__).with_name("cached_data.db")
 URL_EXPORT = "https://medicaments-api.giygas.dev/v1/medicaments/export"
-COLUMNS = ["code_cis", "denomination", "substance", "dci", "code_substance"]
+URL_COMPO = "https://base-donnees-publique.medicaments.gouv.fr/download/file/CIS_COMPO_bdpm.txt"
+COLUMNS = ["code_cis", "denomination", "forme", "substance", "dci", "code_substance"]
+COMPO_COLUMNS = [
+    "code_cis", "element_pharma", "code_substance", "denomination_substance",
+    "dosage", "reference_dosage", "nature", "num_liaison",
+]
+
+
+def load_compo():
+    response = requests.get(URL_COMPO, timeout=120)
+    response.raise_for_status()
+    compo = pd.read_csv(
+        io.BytesIO(response.content), sep="\t", header=None, encoding="latin-1",
+        dtype=str, usecols=range(8), names=COMPO_COLUMNS,
+    )
+    return compo.dropna(subset=["code_cis"]).drop_duplicates()
 
 
 def build_substances(compo):
@@ -37,18 +52,22 @@ def build_substances(compo):
 
 
 def main():
-    conn = sqlite3.connect(DB)
-    compo = pd.read_sql("SELECT * FROM compo_bdpm", conn, dtype=str)
+    compo = load_compo()
 
     response = requests.get(URL_EXPORT, timeout=120)
     response.raise_for_status()
     meds = pd.DataFrame(
-        {"code_cis": str(m["cis"]), "denomination": m["elementPharmaceutique"]}
+        {
+            "code_cis": str(m["cis"]),
+            "denomination": m["elementPharmaceutique"],
+            "forme": m.get("formePharmaceutique"),
+        }
         for m in response.json()
     )
 
     df = meds.merge(build_substances(compo), on="code_cis", how="left")[COLUMNS]
 
+    conn = sqlite3.connect(DB)
     df.to_sql("table_rcp", conn, if_exists="replace", index=False)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_table_rcp_cis ON table_rcp (code_cis)")
     log_update(conn, "table_rcp", len(df))

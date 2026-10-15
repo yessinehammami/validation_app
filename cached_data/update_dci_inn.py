@@ -6,9 +6,8 @@ from pathlib import Path
 import requests
 import pandas as pd
 
-from maj_tables import log_update
+from maj_tables import DB_BUILD as DB, log_update
 
-DB = Path(__file__).with_name("cached_data.db")
 URL = "https://www.wcoomd.org/-/media/wco/public/global/excel/inn-dci-list.xlsx?db=web"
 
 

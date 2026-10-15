@@ -6,9 +6,7 @@ from pathlib import Path
 import requests
 import pandas as pd
 
-from maj_tables import log_update
-
-DB = Path(__file__).with_name("cached_data.db")
+from maj_tables import DB_APP as DB, log_update
 URL_XLS = "https://dpm.tn/images/pdf/liste_amm.xls"
 
 COLUMNS = {

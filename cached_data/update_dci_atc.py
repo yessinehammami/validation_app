@@ -10,9 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from maj_tables import log_update
+from maj_tables import DB_APP, DB_BUILD, log_update
 
-DB = Path(__file__).with_name("cached_data.db")
 ALIAS = Path(__file__).with_name("alias_manuels.csv")
 RAPPORT = Path(__file__).with_name("rapport_dci_atc.csv")
 SANS_ATC = "sans_atc"
@@ -56,17 +55,19 @@ def acide_en(nom):
 
 
 def main():
-    conn = sqlite3.connect(DB)
+    conn = sqlite3.connect(DB_APP)
+    build = sqlite3.connect(DB_BUILD)
     rcp = pd.read_sql(
         "SELECT dci, COUNT(DISTINCT code_cis) AS n_cis FROM table_rcp "
         "WHERE dci IS NOT NULL GROUP BY dci",
         conn,
     )
-    atc = pd.read_sql("SELECT code, inn FROM atc WHERE level = 5 AND inn IS NOT NULL", conn)
-    inn_dci = pd.read_sql("SELECT INN, DCI FROM inn_dci", conn).dropna()
+    atc = pd.read_sql("SELECT code, inn FROM atc WHERE level = 5 AND inn IS NOT NULL", build)
+    inn_dci = pd.read_sql("SELECT inn, dci FROM inn_dci", build).dropna()
+    build.close()
 
     par_inn = atc.assign(inn=atc["inn"].map(normalize)).groupby("inn")["code"].apply(list).to_dict()
-    fr_en = {normalize(d): normalize(i) for i, d in zip(inn_dci["INN"], inn_dci["DCI"])}
+    fr_en = {normalize(d): normalize(i) for i, d in zip(inn_dci["inn"], inn_dci["dci"])}
     alias = {}
     if ALIAS.exists():
         a = pd.read_csv(ALIAS, dtype=str).dropna(subset=["dci_bdpm", "inn_en"])

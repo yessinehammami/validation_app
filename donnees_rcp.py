@@ -10,7 +10,7 @@ from common import DB, load_rcp, normalize, specialites_pour_dci
 
 BASE = "https://medicaments-api.giygas.dev"
 
-st.title("Données RCP")
+st.title("Résumé Caractéristiques Produits (France)")
 st.caption("Source : API Médicaments FR (BDPM / ANSM) - liste des médicaments : cached_data.db")
 
 
@@ -65,7 +65,7 @@ dci_choisie = st_searchbox(
 dci = st.session_state.get("rcp_dci")
 if dci or dci_choisie:
     if dci_choisie:
-        specs = rcp_df[rcp_df["dci"] == dci_choisie][["code_cis", "denomination"]]
+        specs = rcp_df[rcp_df["dci"] == dci_choisie][["code_cis", "denomination", "forme"]]
         specs = specs.drop_duplicates().sort_values("denomination").reset_index(drop=True)
         titre = dci_choisie
     else:
@@ -76,6 +76,13 @@ if dci or dci_choisie:
     if dci and not dci_choisie and st.button("✖ Retirer le filtre DCI"):
         del st.session_state["rcp_dci"]
         st.rerun()
+    specs["forme"] = specs["forme"].fillna("Non renseignée")
+    formes = sorted(specs["forme"].unique())
+    formes_choisies = st.multiselect(
+        "Filtrer par forme pharmaceutique", formes, placeholder="Toutes les formes"
+    )
+    if formes_choisies:
+        specs = specs[specs["forme"].isin(formes_choisies)].reset_index(drop=True)
     st.write(f"{len(specs)} spécialité(s)")
     # toutes les DCI de chaque spécialité, puis regroupement par combinaison identique
     subs = (

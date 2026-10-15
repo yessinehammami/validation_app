@@ -1,5 +1,7 @@
 .env
 .streamlit/secrets.toml
 .venv
+cached_data/build.db
+cached_data/rapport_dci_atc.csv
 __pycache__/
 Données/

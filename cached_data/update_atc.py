@@ -6,9 +6,8 @@ from pathlib import Path
 import requests
 import pandas as pd
 
-from maj_tables import log_update
+from maj_tables import DB_BUILD as DB, log_update
 
-DB = Path(__file__).with_name("cached_data.db")
 URL = "https://data.bioontology.org/ontologies/ATC/download?download_format=csv&apikey=8b5b7825-538d-40e0-9e9e-5ab9274a9aeb"
 
 
