@@ -3,7 +3,7 @@ import streamlit_authenticator as stauth
 from streamlit.errors import StreamlitSecretNotFoundError
 from streamlit_authenticator.utilities.exceptions import LoginError
 
-st.set_page_config(page_title="Validation ordonnances", layout="wide")
+st.set_page_config(page_title="Validation ordonnances", page_icon="💊", layout="wide")
 
 
 def to_dict(obj):
@@ -38,8 +38,8 @@ except LoginError:
     st.stop()
 
 pages = [
-    st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", default=True),
-    st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)"),
+    st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", icon="🇹🇳", default=True),
+    st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)", icon="🇫🇷"),
 ]
 connecte = bool(st.session_state.get("authentication_status"))
 # navigation masquée tant que non connecté, sinon l'ancien menu reste affiché
@@ -50,5 +50,8 @@ if st.session_state.get("authentication_status") is False:
 if not connecte:
     st.stop()
 
+with st.sidebar:
+    st.markdown("### 💊 Validation ordonnances")
+    st.caption(f"Connecté : {st.session_state.get('name') or st.session_state.get('username') or ''}")
 authenticator.logout("Déconnexion", "sidebar")
 pg.run()

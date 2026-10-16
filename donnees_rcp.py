@@ -10,7 +10,7 @@ from common import DB, load_rcp, normalize, specialites_pour_dci
 
 BASE = "https://medicaments-api.giygas.dev"
 
-st.title("Résumé Caractéristiques Produits (France)")
+st.title("🇫🇷 Résumé Caractéristiques Produits (France)")
 st.caption("Source : API Médicaments FR (BDPM / ANSM) - liste des médicaments : cached_data.db")
 
 
@@ -38,12 +38,16 @@ def suggest(term):
     return list(zip(matches["denomination"], matches["code_cis"]))[:20]
 
 
-cis = st_searchbox(
-    suggest,
-    key="sb_rcp",
-    default_options=suggest(""),
-    placeholder="Tapez un médicament (ex: doliprane)",
-)
+col_med, col_dci = st.columns(2, gap="large")
+with col_med:
+    with st.container(border=True):
+        st.markdown("#### 💊 Médicament")
+        cis = st_searchbox(
+            suggest,
+            key="sb_rcp",
+            default_options=suggest(""),
+            placeholder="Tapez un médicament (ex: doliprane)",
+        )
 
 rcp_df = load_rcp()
 dci_liste = sorted(rcp_df["dci"].dropna().unique())
@@ -55,12 +59,15 @@ def suggest_dci(term):
     return [s for s, n in zip(dci_liste, _dcis) if t in n][:20]
 
 
-dci_choisie = st_searchbox(
-    suggest_dci,
-    key="sb_dci",
-    default_options=suggest_dci(""),
-    placeholder="Ou filtrez par DCI (ex: amoxicilline)",
-)
+with col_dci:
+    with st.container(border=True):
+        st.markdown("#### 🧪 Filtrer par DCI")
+        dci_choisie = st_searchbox(
+            suggest_dci,
+            key="sb_dci",
+            default_options=suggest_dci(""),
+            placeholder="Ex: amoxicilline",
+        )
 
 dci = st.session_state.get("rcp_dci")
 if dci or dci_choisie:
@@ -115,15 +122,17 @@ if not cis:
 try:
     med = api_get(f"/v1/medicaments/{cis}")
     rcp = api_get(f"/v1/medicaments/{cis}/rcp")
+except requests.HTTPError as e:
+    if e.response is not None and e.response.status_code == 404:
+        st.warning("Pas d'informations sur ce médicament dans RCP.")
+    else:
+        st.error(f"Erreur lors de l'appel à l'API : {e}")
+    st.stop()
 except requests.RequestException as e:
     st.error(f"Erreur lors de l'appel à l'API : {e}")
     st.stop()
 
-st.subheader(med["elementPharmaceutique"])
-col1, col2, col3 = st.columns(3)
-col1.write(f"**Forme :** {med.get('formePharmaceutique') or '-'}")
-col2.write(f"**Titulaire :** {med.get('titulaire') or '-'}")
-col3.write(f"**Statut :** {med.get('statusAutorisation') or '-'}")
+st.subheader(f"💊 {med['elementPharmaceutique']}")
 
 substances = [
     f"{c['denominationSubstance']} ({c['dosage']})"
