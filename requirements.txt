@@ -1,5 +1,8 @@
 streamlit
+pymupdf
 streamlit-authenticator
 streamlit-searchbox
 pandas
 requests
+openai
+ddgs

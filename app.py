@@ -40,6 +40,9 @@ except LoginError:
 pages = [
     st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", icon="🇹🇳", default=True),
     st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)", icon="🇫🇷"),
+    st.Page("consignation.py", title="Produits en consignation avec visa PCT / DPM", icon="📦"),
+    st.Page("agent_hors_indication/recherche_hors_amm.py", title="Recherche indication hors AMM", icon="🔬"),
+    st.Page("bibliotheque_hors_amm.py", title="Bibliothèque des indications hors AMM", icon="📚"),
 ]
 connecte = bool(st.session_state.get("authentication_status"))
 # navigation masquée tant que non connecté, sinon l'ancien menu reste affiché
