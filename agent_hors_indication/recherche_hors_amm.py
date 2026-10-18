@@ -1,129 +1,85 @@
+import re
+from html import escape
+
 import streamlit as st
 
-from agent_hors_indication.pipeline_hors_amm import collecter, extraire, generer_requetes, valider
+from agent_hors_indication.llm import MODELE_DEFAUT, creer_client, generer_requetes, synthetiser
+from agent_hors_indication.sources import collecter
 
-FOURNISSEURS = {
-    "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-2.5-flash"),
-    "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
-    "openai": (None, "gpt-4.1-mini"),
-}
-STATUTS = {
-    "hors_amm_explicite": "🟢 Hors AMM (explicite dans la source)",
-    "usage_etudie": "🟡 Usage étudié (statut AMM non précisé)",
-}
-EXEMPLES = [
-    "Quelles indications hors AMM pour le propranolol ?",
-    "Médicaments utilisés hors AMM dans la migraine chronique",
-    "Metformine hors AMM : quelles indications ?",
-]
+NOMBRE_PAR_SOURCE = 5
 
 st.title("🔬 Recherche indication hors AMM")
-st.caption(
-    "Sources : PubMed, ClinicalTrials.gov et sites officiels (HAS, ANSM, EMA, FDA, sociétés savantes). "
-    "Chaque résultat est lié à une source réelle, citée mot pour mot et dont le lien est vérifié."
-)
+st.caption("Sources : PubMed, Europe PMC, ClinicalTrials.gov et sites officiels (ANSM, HAS, EMA, FDA). Posez votre question en français ou en anglais.")
 
 try:
     cfg = dict(st.secrets["llm"])
     cle = cfg["api_key"]
 except (KeyError, FileNotFoundError):
-    st.warning(
-        "Clé API non configurée. Ajoutez dans les secrets :\n\n"
-        "```toml\n[llm]\nprovider = \"openai\"  # openai | gemini | groq\napi_key = \"...\"\n"
-        "model = \"gpt-4.1-mini\"\n\n[tavily]  # optionnel (sinon DuckDuckGo gratuit sur sites officiels)\n"
-        "api_key = \"tvly-...\"\n```"
-    )
+    st.warning('Clé API non configurée. Ajoutez dans les secrets :\n\n```toml\n[llm]\napi_key = "sk-..."\nmodel = "gpt-4.1-mini"\n```')
     st.stop()
-
-cle_tavily = None
-try:
-    cle_tavily = st.secrets["tavily"]["api_key"]
-except (KeyError, FileNotFoundError):
-    pass
-
-_url, _modele = FOURNISSEURS.get(cfg.get("provider", "openai"), FOURNISSEURS["openai"])
-modele = cfg.get("model", _modele)
-
-from openai import OpenAI, OpenAIError  # noqa: E402
+modele = cfg.get("model", MODELE_DEFAUT)
 
 
 @st.cache_resource
-def client_llm(api_key, url):
-    return OpenAI(api_key=api_key, base_url=url, timeout=120)
+def client_llm(api_key):
+    return creer_client(api_key)
 
 
-client = client_llm(cle, cfg.get("base_url", _url))
+question = st.text_input("Votre question", placeholder="ex : propranolol hors AMM, ou : traitement de la migraine chronique")
 
-if "historique_hors_amm" not in st.session_state:
-    st.session_state.historique_hors_amm = []
-
-
-def _cell(t):
-    return (t or "").replace("|", "/").replace("\n", " ")
-
-
-def afficher(entree):
-    with st.chat_message("user"):
-        st.markdown(entree["question"])
-    with st.chat_message("assistant"):
-        resultats = entree["resultats"]
-        if not resultats:
-            st.info("Aucun résultat solide trouvé dans les sources vérifiées. Reformulez ou précisez la question.")
-        else:
-            lignes = ["| Médicament | Indication | Statut | Type d'étude | Résumé | Sources |", "|---|---|---|---|---|---|"]
-            for r in resultats:
-                liens = ", ".join(f"[{s['label']}]({s['url']})" for s in r["liens"])
-                lignes.append(
-                    f"| **{_cell(r.get('medicament'))}** | {_cell(r.get('indication'))} | {STATUTS[r['statut']]} "
-                    f"| {_cell(r.get('type_etude'))} | {_cell(r.get('resume'))} | {liens} |"
-                )
-            st.markdown("\n".join(lignes))
-            with st.expander("📎 Extraits cités (mot pour mot)"):
-                for r in resultats:
-                    st.markdown(f"**{r.get('medicament')} - {r.get('indication')}** : « {r.get('citation')} »")
-        with st.expander(f"🔎 Recherches effectuées ({len(entree['journal'])}) · {entree['rejetes']} résultat(s) rejeté(s)"):
-            for outil, q, n, erreur in entree["journal"]:
-                st.write(f"- **{outil}** : `{q}` → {n} source(s)" + (f" ⚠️ {erreur}" if erreur else ""))
-        st.caption(
-            "Synthèse documentaire indicative, à valider par un professionnel de santé ; "
-            "ce n'est pas une recommandation de prescription."
-        )
-
-
-def traiter(question):
-    with st.status("Recherche en cours...", expanded=True) as statut:
-        st.write("🧠 Préparation des requêtes")
-        requetes = generer_requetes(client, modele, question)
-        st.write("🔎 Interrogation de PubMed, ClinicalTrials.gov et du web officiel")
-        registre, journal = collecter(requetes, cle_tavily)
-        st.write(f"📚 {len(registre)} source(s) récupérée(s) · extraction")
-        brut = extraire(client, modele, question, registre)
-        st.write("✅ Vérification des citations et des liens")
-        resultats, rejetes = valider(brut, registre)
-        statut.update(label="Recherche terminée", state="complete", expanded=False)
-    return {"question": question, "resultats": resultats, "journal": journal, "rejetes": rejetes}
-
-
-_, col_reset = st.columns([4, 1])
-if st.session_state.historique_hors_amm and col_reset.button("🗑️ Effacer", width="stretch"):
-    st.session_state.historique_hors_amm = []
-    st.rerun()
-
-for e in st.session_state.historique_hors_amm:
-    afficher(e)
-
-question = st.chat_input("Indication ou médicament (ex: propranolol, migraine chronique...)")
-
-if not st.session_state.historique_hors_amm and not question:
-    st.markdown("**Exemples de questions**")
-    for exemple in EXEMPLES:
-        if st.button(exemple, key=f"ex_{exemple}"):
-            question = exemple
-
-if question:
+if st.button("🔎 Rechercher", type="primary") and question.strip():
     try:
-        st.session_state.historique_hors_amm.append(traiter(question))
-    except OpenAIError as e:
-        st.error(f"Erreur du fournisseur LLM : {e}")
-        st.stop()
-    st.rerun()
+        with st.spinner("Le LLM prépare les requêtes..."):
+            plan = generer_requetes(client_llm(cle), modele, question.strip())
+        with st.spinner("Interrogation de PubMed, Europe PMC, ClinicalTrials.gov et des sites officiels..."):
+            articles, journal = collecter(plan, NOMBRE_PAR_SOURCE)
+        with st.spinner("Le LLM rédige la synthèse..."):
+            synthese, cites = synthetiser(client_llm(cle), modele, question.strip(), articles)
+        # on garde tout en session pour survivre aux rechargements de la page
+        st.session_state["pubmed"] = {
+            "question": question.strip(), "plan": plan, "articles": articles, "journal": journal,
+            "synthese": synthese, "cites": cites,
+        }
+    except Exception as e:
+        st.error(f"Erreur : {e}")
+
+resultat = st.session_state.get("pubmed")
+
+
+def synthese_html(texte, articles):
+    """Transforme chaque [S#] en lien cliquable vers la source (gras, souligné, orange)."""
+    def lien(m):
+        i = int(m.group(1))
+        if not 1 <= i <= len(articles):
+            return ""
+        url = escape(articles[i - 1]["url"], quote=True)
+        return (f'<a href="{url}" target="_blank" rel="noopener noreferrer" '
+                f'style="font-weight:700;text-decoration:underline;color:#f97316;">[S{i}]</a>')
+
+    # le texte du LLM est échappé avant d'insérer notre HTML
+    return re.sub(r"\[S(\d+)\]", lien, escape(texte, quote=False))
+
+if resultat:
+    plan = resultat["plan"]
+    with st.expander("🧠 Recherches effectuées", expanded=False):
+        st.write(f"**Médicament** : {plan.get('medicament_en') or '-'}  ·  **Pathologie** : {plan.get('pathologie_en') or '-'}")
+        for j in resultat["journal"]:
+            st.write(f"**{j['outil']}** : {j['trouves']} trouvé(s), {j['nouveaux']} nouveau(x)" + (f" ⚠️ {j['erreur']}" if j["erreur"] else ""))
+            st.code(j["requete"], language=None)
+        st.caption("Le filtre hors AMM est ajouté par le programme, pas par le LLM.")
+    if not resultat["articles"]:
+        st.info("Aucun article trouvé. Reformulez la question.")
+    else:
+        st.subheader("📝 Synthèse")
+        st.markdown(synthese_html(resultat["synthese"], resultat["articles"]) or "_Le LLM n'a rien pu synthétiser._", unsafe_allow_html=True)
+        st.caption("Synthèse générée à partir des résumés ci-dessous ; à vérifier dans les sources.")
+        st.subheader("📚 Sources")
+    for i, a in enumerate(resultat["articles"], 1):
+        cite = "✅ citée" if i in resultat["cites"] else "non citée"
+        with st.expander(f"[S{i}] {a['titre'] or a['url']} · :orange[**{a['source']}**] · {cite}"):
+            st.markdown(
+                f'<span style="font-weight:700;text-decoration:underline;color:#f97316;">{escape(a["source"])}</span>',
+                unsafe_allow_html=True,
+            )
+            st.markdown(f"[{a['url']}]({a['url']})")
+            st.write(a["resume"] or "_Pas de résumé disponible._")

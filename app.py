@@ -22,6 +22,17 @@ if not secrets_ok:
     st.error("Authentification non configurée (secrets manquants).")
     st.stop()
 
+pages = [
+    st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", icon="🇹🇳", default=True),
+    st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)", icon="🇫🇷"),
+        st.Page("nomenclature_hospitaliere.py", title="Nomenclature Hospitalière", icon="🏥"),    st.Page("consignation.py", title="Produits en consignation avec visa PCT / DPM", icon="📦"),
+    st.Page("agent_hors_indication/recherche_hors_amm.py", title="Recherche indication hors AMM", icon="🔬"),
+    st.Page("bibliotheque_hors_amm.py", title="Bibliothèque des indications hors AMM", icon="📚"),
+]
+# Enregistrer les pages AVANT le login : le composant cookie relance le script,
+# et sans cela le navigateur perd la page courante (retour à la 1re page au F5).
+st.navigation(pages, position="hidden")
+
 authenticator = stauth.Authenticate(
     to_dict(st.secrets["credentials"]),
     st.secrets["cookie"]["name"],
@@ -37,13 +48,6 @@ except LoginError:
     st.warning("Session expirée ou compte supprimé. Rechargez la page (F5) pour vous reconnecter.")
     st.stop()
 
-pages = [
-    st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", icon="🇹🇳", default=True),
-    st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)", icon="🇫🇷"),
-    st.Page("consignation.py", title="Produits en consignation avec visa PCT / DPM", icon="📦"),
-    st.Page("agent_hors_indication/recherche_hors_amm.py", title="Recherche indication hors AMM", icon="🔬"),
-    st.Page("bibliotheque_hors_amm.py", title="Bibliothèque des indications hors AMM", icon="📚"),
-]
 connecte = bool(st.session_state.get("authentication_status"))
 # navigation masquée tant que non connecté, sinon l'ancien menu reste affiché
 pg = st.navigation(pages, position="sidebar" if connecte else "hidden")

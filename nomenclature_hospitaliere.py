@@ -1,0 +1,111 @@
+import re
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
+import pymupdf
+import streamlit as st
+
+from common import normalize
+
+FICHIER = Path(__file__).parent / "Données" / "nh2023.pdf"
+HAUT_PAGE = 60  # l'en-tête de chaque page ("Nomenclature Hospitalière 2023 / Chapitre / n°") est au-dessus de cette ordonnée
+
+
+@st.dialog("Mettre à jour le document")
+def dialogue_maj(existe):
+    st.caption("Le nouveau PDF remplacera l'actuel." if existe else "Aucun document n'est encore déposé.")
+    # la clé change après chaque dépôt pour vider le champ
+    cle = f"upload_nomenclature_{st.session_state.get('upload_nomenclature_n', 0)}"
+    pdf = st.file_uploader("Fichier PDF", type="pdf", key=cle)
+    if pdf and st.button("💾 Enregistrer", type="primary", width="stretch"):
+        FICHIER.parent.mkdir(exist_ok=True)
+        FICHIER.write_bytes(pdf.getvalue())
+        st.session_state["upload_nomenclature_n"] = st.session_state.get("upload_nomenclature_n", 0) + 1
+        st.toast("Document enregistré")
+        st.rerun()
+
+
+def _propre(texte):
+    return re.sub(r"\s+", " ", (texte or "").replace("\n", " ")).strip()
+
+
+@st.cache_data(show_spinner="Lecture de la nomenclature (quelques secondes)...")
+def lire_nomenclature(chemin, modif):
+    """Un tableau unique : Chapitre, Rubrique (titre au-dessus du tableau), L, DCI, Forme, Classification AWaRe.
+    Un tableau sans titre (suite de page) reprend la rubrique du tableau précédent."""
+    lignes, rubrique = [], ""
+    with pymupdf.open(chemin) as doc:
+        for page in doc:
+            if page.number == 0:  # page de garde
+                continue
+            tableaux = sorted(page.find_tables().tables, key=lambda t: t.bbox[1])
+            if not tableaux:
+                continue
+            haut = page.get_text().split("\n")
+            chapitre = _propre(haut[1]) if len(haut) > 1 else ""
+            blocs = page.get_text("blocks")
+            precedent = HAUT_PAGE
+            for t in tableaux:
+                titre = _propre(" ".join(b[4] for b in blocs if precedent - 2 <= b[1] < t.bbox[1] - 1 and b[3] <= t.bbox[1] + 2))
+                if titre:
+                    rubrique = titre
+                precedent = t.bbox[3]
+                for r in t.extract():
+                    cells = [_propre(c) for c in r] + [""] * 4
+                    if cells[0] == "L" and cells[1].upper().startswith("D.C.I"):
+                        continue
+                    if not cells[1] or len(cells[1]) > 200:  # > 200 : liste des préparations hospitalières, pas une DCI
+                        continue
+                    lignes.append({
+                        "Chapitre": chapitre, "Rubrique": rubrique, "L": cells[0],
+                        "DCI": cells[1], "Forme": cells[2], "Classification AWaRe": cells[3],
+                    })
+    return pd.DataFrame(lignes)
+
+
+st.title("🏥 Nomenclature Hospitalière")
+
+existe = FICHIER.exists()
+col_info, col_btn = st.columns([3, 1], vertical_alignment="top")
+if existe:
+    modif = datetime.fromtimestamp(FICHIER.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+    col_info.caption(f"Nomenclature hospitalière (DPM) - dernière mise à jour le {modif}")
+    col_btn.download_button("⬇️ Télécharger", FICHIER.read_bytes(), file_name=FICHIER.name, mime="application/pdf", width="stretch")
+else:
+    col_info.warning("Aucun document déposé pour le moment.")
+if col_btn.button("🔄 Mettre à jour" if existe else "📤 Déposer", width="stretch", key="maj_nomenclature"):
+    dialogue_maj(existe)
+
+if not existe:
+    st.stop()
+
+vue = st.segmented_control("Affichage", ["Tableau filtrable", "Document PDF"], default="Tableau filtrable", key="vue_nomenclature")
+if vue == "Document PDF":
+    st.pdf(FICHIER.read_bytes(), height=800)
+    st.stop()
+
+df = lire_nomenclature(str(FICHIER), FICHIER.stat().st_mtime)
+st.caption(f"{len(df)} lignes extraites du PDF")
+
+with st.expander("Légende"):
+    st.markdown(
+        "- **D** : produit de la nomenclature des centres de soins de santé de base (CSSB).\n"
+        "- **Case vide** : prescription réservée aux médecins des établissements de 3ème et 2ème lignes, hôpitaux de circonscription "
+        "et spécialistes des centres intermédiaires.\n"
+        "- **BS** (dans la colonne DCI) : prescription réservée aux médecins des établissements de 3ème, 2ème lignes et hôpitaux de circonscription."
+    )
+
+col1, col2 = st.columns(2)
+chapitres = list(dict.fromkeys(df["Chapitre"]))
+chapitre = col1.selectbox("Chapitre", chapitres, index=None, placeholder="Tous les chapitres", key="nh_chapitre")
+options = sorted({v for v in df["DCI"] if v}, key=normalize)
+dci = col2.selectbox("DCI", options, index=None, placeholder="Tapez pour rechercher...", key="nh_dci")
+
+masque = pd.Series(True, index=df.index)
+if chapitre:
+    masque &= df["Chapitre"] == chapitre
+if dci:
+    masque &= df["DCI"] == dci
+st.caption(f"{int(masque.sum())} ligne(s) sur {len(df)}")
+st.dataframe(df[masque], hide_index=True, width="stretch", height=600)
