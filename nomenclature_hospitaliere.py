@@ -8,7 +8,7 @@ import streamlit as st
 
 from common import normalize
 
-FICHIER = Path(__file__).parent / "Données" / "nh2023.pdf"
+FICHIER = Path(__file__).parent / "documents_nomenclature" / "nh2023.pdf"
 HAUT_PAGE = 60  # l'en-tête de chaque page ("Nomenclature Hospitalière 2023 / Chapitre / n°") est au-dessus de cette ordonnée
 
 
