@@ -12,6 +12,13 @@ FICHIER = Path(__file__).parent / "documents_nomenclature" / "nh2023.pdf"
 HAUT_PAGE = 60  # l'en-tête de chaque page ("Nomenclature Hospitalière 2023 / Chapitre / n°") est au-dessus de cette ordonnée
 
 
+@st.cache_data(show_spinner="Chargement du document...")
+def pages_pdf(contenu):
+    """Une image PNG par page du PDF."""
+    with pymupdf.open(stream=contenu, filetype="pdf") as doc:
+        return [p.get_pixmap(matrix=pymupdf.Matrix(1.3, 1.3)).tobytes("png") for p in doc]
+
+
 @st.dialog("Mettre à jour le document")
 def dialogue_maj(existe):
     st.caption("Le nouveau PDF remplacera l'actuel." if existe else "Aucun document n'est encore déposé.")
@@ -82,7 +89,10 @@ if not existe:
 
 vue = st.segmented_control("Affichage", ["Tableau filtrable", "Document PDF"], default="Tableau filtrable", key="vue_nomenclature")
 if vue == "Document PDF":
-    st.pdf(FICHIER.read_bytes(), height=800)
+    _, centre, _ = st.columns([1, 3, 1])
+    with centre:
+        for img in pages_pdf(FICHIER.read_bytes()):
+            st.image(img, width="stretch")
     st.stop()
 
 df = lire_nomenclature(str(FICHIER), FICHIER.stat().st_mtime)
