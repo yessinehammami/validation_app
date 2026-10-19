@@ -93,3 +93,17 @@ oxyde de zinc,sans_atc,absent de la table atc
 lévomenthol,sans_atc,absent de la table atc
 eau pour préparations injectables,sans_atc,excipient
 palmier de floride (serenoa repens (w.bartram) small.) (extrait du fruit de),sans_atc,phytotherapie absent de la table atc
+acide clavulanique,sans_atc,seulement en association (ATC porte par l'amoxicilline)
+clavulanique (acide),sans_atc,seulement en association (ATC porte par l'amoxicilline)
+ondansetrone,ondansetron,orthographe DPM
+hydrochlorothizide,hydrochlorothiazide,orthographe DPM
+pentoxyfylline,pentoxifylline,orthographe DPM
+risedronate,risedronic acid,sel FR -> nom ATC
+cotrimoxazole,sulfamethoxazole and trimethoprim,association nommee
+hyaluronate de sodium,hyaluronic acid,sel FR -> nom ATC
+vitamine b1,thiamine (vit b1),nom generique DPM
+vitamine b6,pyridoxine (vit b6),nom generique DPM
+vitamine b12,cyanocobalamin,nom generique DPM
+n-butylhyoscine bromure,butylscopolamine,orthographe DPM
+acides amines,sans_atc,mélange nutritionnel
+lipides,sans_atc,mélange nutritionnel

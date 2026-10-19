@@ -2,8 +2,9 @@ import pandas as pd
 import streamlit as st
 from streamlit_searchbox import st_searchbox
 from common import (
-    NIVEAU_LIBELLE, analyser_ordonnance, load_data, load_rcp, normalize, specialites_pour_dci,
-    suggestions,
+    NIVEAU_LIBELLE, analyser_ordonnance, generiques_pour, load_data, load_rcp, normalize,
+    specialites_pour_dci,
+    statut_reglementaire, suggestions,
 )
 
 df, file_time = load_data()
@@ -122,6 +123,28 @@ else:
             if c6.button("❌", key=f"remove_{idx}", help="Retirer de l'ordonnance"):
                 st.session_state.ordonnance.pop(idx)
                 st.rerun()
+            produit = df[df["label"] == label].iloc[0]
+            lignes_nh, consignations = statut_reglementaire(produit["nom"], produit["dci"], produit["forme"])
+            if lignes_nh:
+                rubriques = " ; ".join(sorted({l["rubrique"].strip() for l in lignes_nh})[:2])
+                st.caption(f"🏥 **Nomenclature hospitalière : oui** ({rubriques})")
+            else:
+                st.caption("🏥 Nomenclature hospitalière : non")
+            if consignations:
+                visas = " · ".join(f"{circuit} → visa {orga}" for circuit, orga in sorted(consignations))
+                st.caption(f"📑 **Consignation** : {visas}")
+            else:
+                st.caption("📑 Consignation : non")
+            if st.toggle("Afficher les génériques", key=f"gen_{idx}_{label}"):
+                gen = generiques_pour(df, label)
+                if gen.empty:
+                    st.info("Aucun autre produit de même composition dans le DPM.")
+                else:
+                    st.caption(f"{len(gen)} produit(s) de même composition")
+                    st.dataframe(
+                        gen.rename(columns={"g_p_b": "Type", "amm": "AMM"}).rename(columns=str.capitalize),
+                        hide_index=True, width="stretch",
+                    )
 
     detecter = st.button(
         "🔍 Détecter une interaction",

@@ -15,7 +15,7 @@ Ce document explique, depuis les données brutes, comment on arrive à l'analyse
 ```
 DPM (Tunisie) ──► dpm_produit_raw ─────────────┐
                                                │ DCI (texte libre "A+B")
-BDPM (France) ──► table_rcp (CIS, substance, DCI) ──► dci_atc (DCI → codes ATC)
+BDPM (France) ──► table_rcp (CIS, substance, DCI) ──► substance (nom → INN + codes ATC)
                                                               │
 ATC (BioPortal) + inn_dci (FR→EN) ──► build.db ───────────────┘
                                                               │
@@ -38,8 +38,8 @@ Un médicament est concerné par une entrée du thésaurus si son code ATC comme
 |---|---|---|---|
 | DPM (Direction de la Pharmacie et du Médicament, Tunisie) | Spécialités tunisiennes, DCI, classe, sous-classe | `update_dpm.py` | `dpm_produit_raw` |
 | BDPM (base publique des médicaments, France) | Spécialités, compositions (`CIS_COMPO_bdpm.txt`), RCP | `update_bdpm.py` | `table_rcp` |
-| ATC (BioPortal) | Classification ATC (niveau 5 = substance) | `update_atc.py` | `atc` (dans `build.db`) |
-| INN/DCI | Correspondance noms français ↔ anglais | `update_dci_inn.py` | `inn_dci` (dans `build.db`) |
+| ATC (BioPortal) | Classification ATC (niveau 5 = substance) | `update_dci_atc.py` | `atc` (dans `build.db`) |
+| INN/DCI | Correspondance noms français ↔ anglais | `update_dci_atc.py` | `inn_dci` (dans `build.db`) |
 | Thésaurus ANSM (sept. 2023, PDF) | Interactions médicamenteuses | `extract_thesaurus.py` (une fois) | `thesaurus_interactions.csv` |
 
 Le thésaurus 2023 est la dernière version publiée ; il n'est plus mis à jour. Son extraction est donc figée.
@@ -49,7 +49,43 @@ Le thésaurus 2023 est la dernière version publiée ; il n'est plus mis à jour
 - `cached_data/cached_data.db` : base **de l'application** (versionnée, lue par Streamlit) ;
 - `cached_data/build.db` : base **de construction** (tables intermédiaires `atc`, `inn_dci`), non versionnée, régénérée par les scripts.
 
-Tables de `cached_data.db` : `dpm_produit_raw`, `table_rcp`, `dci_atc`, `thesaurus_interactions`, `thesaurus_atc`, `maj_tables` (date de dernière mise à jour de chaque table).
+Tables de `cached_data.db` : `dpm_produit_raw`, `table_rcp`, `thesaurus_interactions` (données brutes),
+`substance`, `thesaurus_atc` (dérivées) et `maj_tables` (date de dernière mise à jour de chaque table).
+
+### Table `substance` : référentiel commun DPM ↔ RCP
+
+Le DPM (Tunisie) et la BDPM (France) n'ont aucun code en commun : le seul pont est la **substance**.
+`update_dci_atc.py` construit une table unique à partir des DCI de `table_rcp` et des composants de
+`dpm_produit_raw` (une association `A + B` est découpée en un nom par composant). Une ligne par (nom, code ATC) :
+
+| Colonne | Contenu |
+|---|---|
+| `nom` / `nom_normalise` | nom tel que rencontré (sel, hydrate, ordre inversé, orthographe DPM…) / sans accents ni majuscules |
+| `id_substance` | identifiant commun : INN anglais si trouvé dans l'ATC, sinon nom normalisé sans sel |
+| `inn_en`, `code_atc` | INN anglais retenu et code ATC niveau 5 (vide si pas d'ATC) |
+| `statut` | `ok` (ATC trouvé), `sans_atc` (déclaré sans ATC : excipients, acides aminés, homéopathie…) ou `a_verifier` |
+| `methode`, `sources` | règle de rapprochement utilisée ; origine du nom (`rcp`, `dpm` ou `dpm+rcp`) |
+
+Deux noms de même `id_substance` désignent la même substance, côté France comme côté Tunisie. L'identifiant est
+déterministe : il ne change pas d'une mise à jour à l'autre tant que les alias ne changent pas.
+
+Exemple : toutes les graphies d'une substance et ses codes ATC.
+
+```sql
+SELECT nom, sources, code_atc FROM substance WHERE id_substance = 'ibuprofen';
+```
+
+Les noms `a_verifier` sont listés dans `cached_data/rapport_substances.csv` (non versionné, triés par nombre de
+produits concernés). Pour en corriger un, ajouter une ligne à `alias_manuels.csv` (`dci_bdpm`, `inn_en` ou
+`sans_atc`, `commentaire`) puis relancer `update_dci_atc.py`.
+
+### Données de nomenclature hospitalière et de consignation
+
+Les tableaux extraits des PDF sont enregistrés dans `consignation_Nomenclature hospit/documents.db` :
+`nomenclature_hospitaliere`, `consignation_hospitalier_dpm`, `consignation_hospitalier_pct`,
+`consignation_officinal_dpm` et `consignation_officinal_pct`. Chaque nouveau dépôt remplace les lignes
+de la table correspondante. Les PDF restent dans `documents_nomenclature/` et `documents_consignation/`
+pour l'affichage et le téléchargement.
 
 ---
 
@@ -63,13 +99,10 @@ Téléchargement de la liste des spécialités tunisiennes. La colonne `dci` est
 `update_bdpm.py` télécharge les fichiers BDPM et la composition (`CIS_COMPO_bdpm.txt`, traitée en mémoire).
 Chaque ligne : code CIS, dénomination, substance (avec sel), **DCI** (substance sans sel), code substance.
 
-### Étape 3 – ATC et traduction des noms
-- `update_atc.py` charge la classification ATC (on ne garde que les codes de niveau 5, ex. `B01AA03` warfarine).
-- `update_dci_inn.py` charge la table de traduction français → anglais (ex. *paracétamol* → *paracetamol*),
-  car l'ATC est en anglais.
-
-### Étape 4 – DCI → ATC : `dci_atc`
-`update_dci_atc.py` associe chaque DCI de `table_rcp` à un ou plusieurs codes ATC (plusieurs selon la voie
+### Étape 3 – DCI → ATC : `substance`
+`update_dci_atc.py` commence par charger dans `build.db` la classification ATC (on ne garde que les codes de niveau 5,
+ex. `B01AA03` warfarine) et la table de traduction français → anglais (ex. *paracétamol* → *paracetamol*), car l'ATC est
+en anglais. Il associe ensuite chaque nom de substance (DCI de `table_rcp`, composants du DPM) à un ou plusieurs codes ATC (plusieurs selon la voie
 d'administration). Cascade, du plus sûr au moins sûr ; la première correspondance trouvée gagne :
 
 1. règle spéciale : homéopathie / virus → pas d'ATC ;
@@ -82,7 +115,7 @@ d'administration). Cascade, du plus sûr au moins sûr ; la première correspond
 `alias_manuels.csv` permet de forcer un rattachement (`DCI → nom ATC`) ou de déclarer qu'une DCI n'a
 pas d'ATC (`sans_atc`: acides aminés, minéraux, excipients, substances absentes de l'ATC…).
 
-### Étape 5 – Extraction du thésaurus (une seule fois)
+### Étape 4 – Extraction du thésaurus (une seule fois)
 `extract_thesaurus.py` (nécessite `pymupdf`, non listé dans `requirements.txt`) lit le PDF en s'appuyant
 sur la taille de police et la position des textes :
 
@@ -109,7 +142,7 @@ plus sévère. Le fichier CSV est versionné : il n'y a pas besoin de refaire l'
 
 - **Substances** : le nom est nettoyé (suppression de « (et, par extrapolation, …) », inversion de
   « X (acide) », séparation de « A + B », retrait des parenthèses), puis rapproché des DCI de `table_rcp`,
-  et on reprend leurs codes ATC (via `dci_atc`) ;
+  et on reprend leurs codes ATC (via `substance`) ;
 - **Classes** (ex. « ANTICOAGULANTS ORAUX », « ANTI-INFLAMMATOIRES NON STÉROÏDIENS ») : l'ATC ne contient
   pas la liste des membres d'une classe du thésaurus ; elle est donc définie à la main dans
   `classes_atc.csv` (`nom_thesaurus`, `prefixes_atc` séparés par `|`, `commentaire`). Ex. AINS → `M01A`.
@@ -127,7 +160,7 @@ Code : `analyser_ordonnance()` dans `common.py`.
 1. **Médicament → DCI** : la colonne `dci` du DPM (découpée sur `+`).
 2. **DCI → substances RCP** : correspondance avec `table_rcp.dci` (égalité si le nom fait moins de 4 caractères,
    sinon « contient »), après normalisation (minuscules, sans accents).
-3. **Substances → codes ATC** via `dci_atc`.
+3. **Substances → codes ATC** via `substance`.
 4. **Codes ATC → entrées du thésaurus** : une entrée est retenue si un des codes du médicament commence
    par un de ses préfixes dans `thesaurus_atc`.
 5. **Pour chaque paire de médicaments** : on cherche dans `thesaurus_interactions` les lignes `(a, b)` dans
@@ -160,12 +193,12 @@ L'analyse est **indicative** et ne remplace ni un pharmacien ni la lecture du RC
 Le workflow GitHub `.github/workflows/update_data.yml` s'exécute chaque mois et lance, dans l'ordre :
 
 ```
-update_dpm → update_bdpm → update_dci_inn → update_atc → update_dci_atc → update_thesaurus
+update_dpm → update_bdpm → update_dci_atc → update_thesaurus
 ```
 
-`update_thesaurus.py` est relancé car `thesaurus_atc` dépend de `dci_atc`, qui change avec les données.
+`update_thesaurus.py` est relancé car `thesaurus_atc` dépend de `substance`, qui change avec les données.
 En local, lancer les scripts depuis le dossier `cached_data` (ils importent `maj_tables`) ; `update_dci_atc.py`
-et `update_thesaurus.py` ont besoin de `build.db` (généré par `update_atc.py` et `update_dci_inn.py`).
+et `update_thesaurus.py` ont besoin de `build.db` (généré par `update_dci_atc.py`).
 
 ## 7. Lancer l'application
 

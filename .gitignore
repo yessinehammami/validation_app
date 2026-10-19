@@ -3,5 +3,6 @@
 .venv
 cached_data/build.db
 cached_data/rapport_dci_atc.csv
+cached_data/rapport_substances.csv
 __pycache__/
 Données/

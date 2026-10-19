@@ -1,4 +1,5 @@
 import re
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import streamlit as st
 from common import normalize
 
 FICHIER = Path(__file__).parent / "documents_nomenclature" / "nh2023.pdf"
+DB = Path(__file__).parent / "consignation_Nomenclature hospit" / "documents.db"
+TABLE = "nomenclature_hospitaliere"
 HAUT_PAGE = 60  # l'en-tête de chaque page ("Nomenclature Hospitalière 2023 / Chapitre / n°") est au-dessus de cette ordonnée
 
 
@@ -26,11 +29,37 @@ def dialogue_maj(existe):
     cle = f"upload_nomenclature_{st.session_state.get('upload_nomenclature_n', 0)}"
     pdf = st.file_uploader("Fichier PDF", type="pdf", key=cle)
     if pdf and st.button("💾 Enregistrer", type="primary", width="stretch"):
+        contenu = pdf.getvalue()
+        df = lire_nomenclature(contenu)
+        if df.empty:
+            st.error("Aucune ligne de nomenclature n'a été détectée dans ce PDF.")
+            return
+        _enregistrer_tableau(df)
         FICHIER.parent.mkdir(exist_ok=True)
-        FICHIER.write_bytes(pdf.getvalue())
+        FICHIER.write_bytes(contenu)
         st.session_state["upload_nomenclature_n"] = st.session_state.get("upload_nomenclature_n", 0) + 1
-        st.toast("Document enregistré")
+        st.toast("Document et tableau enregistrés")
         st.rerun()
+
+
+def _table_exists():
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as conn:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (TABLE,),
+        ).fetchone() is not None
+
+
+def _enregistrer_tableau(df):
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as conn:
+        df.to_sql(TABLE, conn, if_exists="replace", index=False)
+
+
+def _charger_tableau():
+    with sqlite3.connect(DB) as conn:
+        return pd.read_sql_query(f'SELECT * FROM "{TABLE}"', conn)
 
 
 def _propre(texte):
@@ -38,11 +67,11 @@ def _propre(texte):
 
 
 @st.cache_data(show_spinner="Lecture de la nomenclature (quelques secondes)...")
-def lire_nomenclature(chemin, modif):
+def lire_nomenclature(contenu):
     """Un tableau unique : Chapitre, Rubrique (titre au-dessus du tableau), L, DCI, Forme, Classification AWaRe.
     Un tableau sans titre (suite de page) reprend la rubrique du tableau précédent."""
     lignes, rubrique = [], ""
-    with pymupdf.open(chemin) as doc:
+    with pymupdf.open(stream=contenu, filetype="pdf") as doc:
         for page in doc:
             if page.number == 0:  # page de garde
                 continue
@@ -87,6 +116,14 @@ if col_btn.button("🔄 Mettre à jour" if existe else "📤 Déposer", width="s
 if not existe:
     st.stop()
 
+if not _table_exists():
+    tableau_extrait = lire_nomenclature(FICHIER.read_bytes())
+    if tableau_extrait.empty:
+        st.error("Aucune ligne de nomenclature n'a été détectée dans ce PDF.")
+        st.stop()
+    _enregistrer_tableau(tableau_extrait)
+df = _charger_tableau()
+
 vue = st.segmented_control("Affichage", ["Tableau filtrable", "Document PDF"], default="Tableau filtrable", key="vue_nomenclature")
 if vue == "Document PDF":
     _, centre, _ = st.columns([1, 3, 1])
@@ -95,7 +132,6 @@ if vue == "Document PDF":
             st.image(img, width="stretch")
     st.stop()
 
-df = lire_nomenclature(str(FICHIER), FICHIER.stat().st_mtime)
 st.caption(f"{len(df)} lignes extraites du PDF")
 
 with st.expander("Légende"):

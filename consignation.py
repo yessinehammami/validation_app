@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import sqlite3
 
 import fitz
 import pandas as pd
@@ -8,8 +9,15 @@ import streamlit as st
 from common import normalize
 
 DOSSIER = Path(__file__).parent / "documents_consignation"
+DB = Path(__file__).parent / "consignation_Nomenclature hospit" / "documents.db"
 CATEGORIES = {"Hospitalier": "hospitalier", "Officinal": "officinal"}
 VISAS = {"Visa DPM": "dpm", "Visa PCT": "pct"}
+TABLES = {
+    "hospitalier_dpm": "consignation_hospitalier_dpm",
+    "hospitalier_pct": "consignation_hospitalier_pct",
+    "officinal_dpm": "consignation_officinal_dpm",
+    "officinal_pct": "consignation_officinal_pct",
+}
 
 
 @st.cache_data(show_spinner="Chargement du document...")
@@ -38,6 +46,26 @@ def tableau_pdf(contenu):
     largeur = len(noms)
     corps = [(r + [""] * largeur)[:largeur] for r in lignes[1:] if r != entete and any(r)]
     return pd.DataFrame(corps, columns=noms)
+
+
+def _table_exists(nom_table):
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as conn:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (nom_table,),
+        ).fetchone() is not None
+
+
+def _enregistrer_tableau(nom_table, df):
+    DB.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(DB) as conn:
+        df.to_sql(nom_table, conn, if_exists="replace", index=False)
+
+
+def _charger_tableau(nom_table):
+    with sqlite3.connect(DB) as conn:
+        return pd.read_sql_query(f'SELECT * FROM "{nom_table}"', conn)
 
 
 def _colonne(df, mot):
@@ -75,6 +103,7 @@ if not visa:
 
 choix = f"{type_} - {visa}"
 fichier = DOSSIER / f"{CATEGORIES[type_]}_{VISAS[visa]}.pdf"
+nom_table = TABLES[fichier.stem]
 
 @st.dialog("Mettre à jour le document")
 def dialogue_maj(fichier, existe):
@@ -83,10 +112,16 @@ def dialogue_maj(fichier, existe):
     cle = f"upload_{fichier.stem}_{st.session_state.get('upload_n', 0)}"
     pdf = st.file_uploader("Fichier PDF", type="pdf", key=cle)
     if pdf and st.button("💾 Enregistrer", type="primary", width="stretch"):
+        contenu = pdf.getvalue()
+        df = tableau_pdf(contenu)
+        if df is None or df.empty:
+            st.error("Aucun tableau n'a été détecté dans ce PDF.")
+            return
+        _enregistrer_tableau(nom_table, df)
         DOSSIER.mkdir(exist_ok=True)
-        fichier.write_bytes(pdf.getvalue())
+        fichier.write_bytes(contenu)
         st.session_state["upload_n"] = st.session_state.get("upload_n", 0) + 1
-        st.toast("Document enregistré")
+        st.toast("Document et tableau enregistrés")
         st.rerun()
 
 
@@ -105,7 +140,11 @@ if col_btn.button("🔄 Mettre à jour" if existe else "📤 Déposer", width="s
 
 if existe:
     contenu = fichier.read_bytes()
-    df = tableau_pdf(contenu)
+    if not _table_exists(nom_table):
+        tableau_extrait = tableau_pdf(contenu)
+        if tableau_extrait is not None and not tableau_extrait.empty:
+            _enregistrer_tableau(nom_table, tableau_extrait)
+    df = _charger_tableau(nom_table) if _table_exists(nom_table) else None
     if df is None:
         st.info("Aucun tableau détecté dans ce PDF : affichage du document.")
         vue = "Document PDF"

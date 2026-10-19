@@ -1,7 +1,7 @@
 """thesaurus_interactions.csv (extrait du PDF ANSM par extract_thesaurus.py) -> tables
 thesaurus_interactions (brut) et thesaurus_atc (nom du thesaurus -> codes/préfixes ATC).
 
-Substances : nom -> DCI de table_rcp -> codes de dci_atc. Classes : classes_atc.csv (préfixes ATC).
+Substances : nom -> DCI de table_rcp -> codes de substance. Classes : classes_atc.csv (préfixes ATC).
 Doit tourner après update_dci_atc.py.
 """
 import re
@@ -73,7 +73,7 @@ def main():
     liens = pd.DataFrame(lignes, columns=["nom_thesaurus", "dci", "methode"]).drop_duplicates(
         ["nom_thesaurus", "dci"]
     )
-    codes = pd.read_sql("SELECT dci, code_atc FROM dci_atc", conn)
+    codes = pd.read_sql("SELECT nom AS dci, code_atc FROM substance WHERE code_atc IS NOT NULL", conn)
     par_substance = liens.merge(codes, on="dci")[["nom_thesaurus", "code_atc"]].drop_duplicates()
     par_substance = par_substance.rename(columns={"code_atc": "prefixe_atc"}).assign(origine="substance")
 
