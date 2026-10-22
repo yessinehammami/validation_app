@@ -71,15 +71,16 @@ authenticator.logout("Déconnexion", "sidebar")
 # à chaque exécution, avec les mêmes arguments : le composant reste monté et n'écrit qu'une fois par session.
 if st.session_state.get("authentication_status"):
     cm = authenticator.cookie_controller.cookie_model
-    if "cookie_reconnexion" not in st.session_state:
+    # clé distincte de celle du composant : Streamlit range la valeur du composant sous sa clé
+    if "jeton_reconnexion" not in st.session_state:
         cm.exp_date = cm._set_exp_date()
-        st.session_state["cookie_reconnexion"] = (
+        st.session_state["jeton_reconnexion"] = (
             cm._token_encode(), datetime.now() + timedelta(days=cm.cookie_expiry_days)
         )
-    token, expire = st.session_state["cookie_reconnexion"]
+    token, expire = st.session_state["jeton_reconnexion"]
     # "lax" plutôt que "strict" : le cookie est aussi envoyé quand l'app est ouverte depuis un lien externe
     cm.cookie_manager.set(cm.cookie_name, token, key="cookie_reconnexion", expires_at=expire, same_site="lax")
 else:
     # déconnexion : le prochain login (éventuellement d'un autre compte) recrée le jeton
-    st.session_state.pop("cookie_reconnexion", None)
+    st.session_state.pop("jeton_reconnexion", None)
 pg.run()
