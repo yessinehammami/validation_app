@@ -207,4 +207,4 @@ with tab_consulter:
             masque &= df["population"].map(lambda p: any(x in p.split(", ") for x in f_pop))
 
         st.caption(f"{int(masque.sum())} indication(s) sur {len(df)}")
-        afficher_tableau(df[masque])''''''
+        afficher_tableau(df[masque])

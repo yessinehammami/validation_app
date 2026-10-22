@@ -78,8 +78,14 @@ if st.session_state.get("authentication_status"):
             cm._token_encode(), datetime.now() + timedelta(days=cm.cookie_expiry_days)
         )
     token, expire = st.session_state["jeton_reconnexion"]
+    # appel direct du composant : CookieManager.set() injecte aussi un CSS qui masque tout composant de
+    # hauteur 0, donc les st_searchbox des pages 1 et 2 tant qu'elles chargent.
     # "lax" plutôt que "strict" : le cookie est aussi envoyé quand l'app est ouverte depuis un lien externe
-    cm.cookie_manager.set(cm.cookie_name, token, key="cookie_reconnexion", expires_at=expire, same_site="lax")
+    cm.cookie_manager.cookie_manager(
+        method="set", cookie=cm.cookie_name, value=token,
+        options={"path": "/", "expires": expire.isoformat(), "sameSite": "lax"},
+        key="cookie_reconnexion", default=False,
+    )
 else:
     # déconnexion : le prochain login (éventuellement d'un autre compte) recrée le jeton
     st.session_state.pop("jeton_reconnexion", None)
