@@ -15,3 +15,7 @@ baseRadius = "0.6rem"
 
 [client]
 toolbarMode = "minimal"
+
+[server]
+# session conservée 6 h après une coupure (téléphone en veille) : au retour, reprise sans recharger
+disconnectedSessionTTL = 21600

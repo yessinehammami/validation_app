@@ -1,6 +1,8 @@
 streamlit
 pymupdf
-streamlit-authenticator
+# versions figées : app.py utilise le gestionnaire de cookies interne de la librairie
+streamlit-authenticator==0.4.2
+extra-streamlit-components==0.1.81
 streamlit-searchbox
 pandas
 requests

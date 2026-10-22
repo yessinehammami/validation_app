@@ -1,12 +1,17 @@
 # Validation ordonnances
 
-Application Streamlit qui :
+Application Streamlit (accès par identifiant / mot de passe) d'aide à la validation d'ordonnances :
 
-1. convertit des spécialités du DPM (Tunisie) en DCI ;
-2. affiche les données RCP françaises (API Médicaments FR / BDPM) ;
-3. **analyse les interactions médicamenteuses d'une ordonnance** à partir du Thésaurus des interactions de l'ANSM.
+| Page | Fichier | Rôle |
+|---|---|---|
+| Liste AMMs en Tunisie | `conversion_dci.py` | spécialités du DPM → DCI, génériques, statut réglementaire, **analyse des interactions** d'une ordonnance (Thésaurus ANSM) |
+| RCP (France) | `donnees_rcp.py` | données RCP françaises (BDPM) |
+| Nomenclature hospitalière | `nomenclature_hospitaliere.py` | dépôt du PDF de la nomenclature, extraction et affichage du tableau |
+| Produits en consignation | `consignation.py` | idem pour les 4 listes de consignation (hospitalier / officinal, visa PCT / DPM) |
+| Recherche indication hors AMM | `agent_hors_indication/` | agent LLM + recherche bibliographique (voir § 7) |
+| Bibliothèque hors AMM | `bibliotheque_hors_amm.py` | indications hors AMM saisies et partagées par les utilisateurs |
 
-Ce document explique, depuis les données brutes, comment on arrive à l'analyse d'interactions.
+Les sections 1 à 6 expliquent, depuis les données brutes, comment on arrive à l'analyse d'interactions.
 
 ---
 
@@ -116,7 +121,7 @@ d'administration). Cascade, du plus sûr au moins sûr ; la première correspond
 pas d'ATC (`sans_atc`: acides aminés, minéraux, excipients, substances absentes de l'ATC…).
 
 ### Étape 4 – Extraction du thésaurus (une seule fois)
-`extract_thesaurus.py` (nécessite `pymupdf`, non listé dans `requirements.txt`) lit le PDF en s'appuyant
+`extract_thesaurus.py` (nécessite `pymupdf`) lit le PDF en s'appuyant
 sur la taille de police et la position des textes :
 
 - substance ou classe **A** : grande police, à gauche ;
@@ -136,7 +141,7 @@ de lignes `+ B` du PDF. Niveaux :
 Quand plusieurs niveaux sont cités, `niveaux` les contient tous (séparés par `|`) et `niveau_max` donne le
 plus sévère. Le fichier CSV est versionné : il n'y a pas besoin de refaire l'extraction.
 
-### Étape 6 – Thésaurus → ATC : `thesaurus_atc`
+### Étape 5 – Thésaurus → ATC : `thesaurus_atc`
 `update_thesaurus.py` charge le CSV dans `thesaurus_interactions` et construit `thesaurus_atc`
 (`nom_thesaurus`, `prefixe_atc`, `origine`) :
 
@@ -200,7 +205,30 @@ update_dpm → update_bdpm → update_dci_atc → update_thesaurus
 En local, lancer les scripts depuis le dossier `cached_data` (ils importent `maj_tables`) ; `update_dci_atc.py`
 et `update_thesaurus.py` ont besoin de `build.db` (généré par `update_dci_atc.py`).
 
-## 7. Lancer l'application
+Les tableaux de nomenclature / consignation (`documents.db`) et la bibliothèque hors AMM
+(`bibliotheque/bibliotheque.db`) sont modifiés depuis l'application et ne sont pas concernés par ce workflow.
+Sur un hébergement au disque éphémère (Streamlit Community Cloud), ces modifications sont perdues au
+redémarrage de l'app : penser à les sauvegarder ou à les committer.
+
+---
+
+## 7. Recherche d'indications hors AMM (agent)
+
+Page « Recherche indication hors AMM » (`agent_hors_indication/`) :
+
+1. `llm.py` : le LLM (OpenAI, modèle `gpt-4.1-mini` par défaut) transforme la question (FR ou EN) en une
+   requête PubMed. Il ne répond pas à la question ; le filtre hors AMM est ajouté par le code.
+2. `sources.py` : interrogation de PubMed, Europe PMC, ClinicalTrials.gov et de sites officiels
+   (ANSM, HAS, EMA, FDA). Les liens sont construits par le code, jamais par le LLM.
+3. `llm.py` : synthèse en français, **uniquement** à partir des résumés trouvés, chaque phrase citant ses
+   sources `[S#]` ; les citations vers des sources inexistantes sont supprimées.
+
+La page « Bibliothèque des indications hors AMM » permet ensuite d'enregistrer les usages retenus
+(DCI, population, indication, spécialité médicale, lien…) dans `bibliotheque/bibliotheque.db`.
+
+---
+
+## 8. Lancer l'application
 
 ```
 python -m venv .venv
@@ -208,6 +236,28 @@ python -m venv .venv
 pip install -r requirements.txt
 streamlit run app.py
 ```
+
+L'application a besoin de `.streamlit/secrets.toml` (en local) ou des *Secrets* de Streamlit Cloud ;
+ce fichier n'est jamais versionné :
+
+```toml
+[cookie]
+name = "val_app_auth"
+key = "une-longue-cle-aleatoire"
+expiry_days = 7
+
+[credentials.usernames.identifiant]
+name = "Nom affiché"
+password = "mot de passe haché (bcrypt)"   # voir creer_utilisateur.py
+
+[llm]
+api_key = "sk-..."
+model = "gpt-4.1-mini"
+```
+
+**Reconnexion automatique (mobile)** : la session Streamlit est conservée 6 h après une coupure
+(`server.disconnectedSessionTTL` dans `.streamlit/config.toml`) ; au-delà, l'utilisateur est reconnecté par le
+cookie signé (`[cookie]`, valable `expiry_days` jours), que `app.py` réécrit à chaque session.
 
 Fichiers principaux : `app.py` (navigation et login), `conversion_dci.py` (page 1 + analyse),
 `donnees_rcp.py` (page RCP), `common.py` (chargement des données et logique d'analyse).

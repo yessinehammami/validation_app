@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import streamlit as st
 import streamlit_authenticator as stauth
 from streamlit.errors import StreamlitSecretNotFoundError
@@ -25,7 +27,8 @@ if not secrets_ok:
 pages = [
     st.Page("conversion_dci.py", title="Liste AMMs en Tunisie", icon="🇹🇳", default=True),
     st.Page("donnees_rcp.py", title="Résumé Caractéristiques Produits (France)", icon="🇫🇷"),
-        st.Page("nomenclature_hospitaliere.py", title="Nomenclature Hospitalière", icon="🏥"),    st.Page("consignation.py", title="Produits en consignation avec visa PCT / DPM", icon="📦"),
+    st.Page("nomenclature_hospitaliere.py", title="Nomenclature Hospitalière", icon="🏥"),
+    st.Page("consignation.py", title="Produits en consignation avec visa PCT / DPM", icon="📦"),
     st.Page("agent_hors_indication/recherche_hors_amm.py", title="Recherche indication hors AMM", icon="🔬"),
     st.Page("bibliotheque_hors_amm.py", title="Bibliothèque des indications hors AMM", icon="📚"),
 ]
@@ -61,4 +64,22 @@ with st.sidebar:
     st.markdown("### 💊 Validation ordonnances")
     st.caption(f"Connecté : {st.session_state.get('name') or st.session_state.get('username') or ''}")
 authenticator.logout("Déconnexion", "sidebar")
+
+# Cookie de reconnexion : la librairie ne l'écrit qu'une fois, au clic sur « Login », via un composant
+# invisible ; si le script est relancé avant que ce composant ait chargé (fréquent sur mobile), le cookie
+# n'est jamais écrit et la session est perdue dès que le téléphone se met en veille. On le réécrit donc
+# à chaque exécution, avec les mêmes arguments : le composant reste monté et n'écrit qu'une fois par session.
+if st.session_state.get("authentication_status"):
+    cm = authenticator.cookie_controller.cookie_model
+    if "cookie_reconnexion" not in st.session_state:
+        cm.exp_date = cm._set_exp_date()
+        st.session_state["cookie_reconnexion"] = (
+            cm._token_encode(), datetime.now() + timedelta(days=cm.cookie_expiry_days)
+        )
+    token, expire = st.session_state["cookie_reconnexion"]
+    # "lax" plutôt que "strict" : le cookie est aussi envoyé quand l'app est ouverte depuis un lien externe
+    cm.cookie_manager.set(cm.cookie_name, token, key="cookie_reconnexion", expires_at=expire, same_site="lax")
+else:
+    # déconnexion : le prochain login (éventuellement d'un autre compte) recrée le jeton
+    st.session_state.pop("cookie_reconnexion", None)
 pg.run()
